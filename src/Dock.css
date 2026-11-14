@@ -204,7 +204,12 @@ body {
 	gap: 12px;
 	padding: 8px 8px;
 	border-radius: 18px 18px 0 0;
-	background: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	/* Painted by the .edge-surface child (see components/EdgeSurface.css). */
+	--surface-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	/* A restrained rim with a brighter, light-catching top edge. */
+	--surface-edge: var(--bloom-text, white);
+	--surface-light: white;
+	isolation: isolate;
 	border: none;
 	color: var(--bloom-text, white);
 	position: relative;
@@ -235,51 +240,14 @@ body {
 	gap: 12px;
 }
 
-.dock::before,
-.dock::after {
-	content: "";
-	position: absolute;
-	bottom: 0;
-	width: 13px;
-	height: 13px;
+.dock-app-divider {
+	width: 1px;
+	height: 26px;
+	flex: none;
+	margin: 0 2px;
+	border-radius: 1px;
+	background: color-mix(in srgb, var(--bloom-text, white) 24%, transparent);
 	pointer-events: none;
-	opacity: 0;
-	transition: opacity 0.3s ease;
-}
-
-.dock.dock-expanded::before,
-.dock.dock-expanded::after {
-	opacity: 1;
-}
-
-.dock::before {
-	left: -13px;
-	-webkit-mask-image: radial-gradient(circle at 0% 0%, transparent 12.5px, black 13px);
-	mask-image: radial-gradient(circle at 0% 0%, transparent 12.5px, black 13px);
-	background:
-		radial-gradient(
-			circle at 0 0,
-			transparent 12px,
-			var(--bloom-border, rgba(255, 255, 255, 0.1)) 12.7px,
-			var(--bloom-border, rgba(255, 255, 255, 0.1)) 13.3px,
-			transparent 14px
-		),
-		var(--bloom-bg, rgba(0, 0, 0, 0.8));
-}
-
-.dock::after {
-	right: -13px;
-	-webkit-mask-image: radial-gradient(circle at 100% 0%, transparent 12.5px, black 13px);
-	mask-image: radial-gradient(circle at 100% 0%, transparent 12.5px, black 13px);
-	background:
-		radial-gradient(
-			circle at 13px 0,
-			transparent 12px,
-			var(--bloom-border, rgba(255, 255, 255, 0.1)) 12.7px,
-			var(--bloom-border, rgba(255, 255, 255, 0.1)) 13.3px,
-			transparent 14px
-		),
-		var(--bloom-bg, rgba(0, 0, 0, 0.8));
 }
 
 .dock-icon-wrapper {
@@ -326,6 +294,11 @@ body {
 }
 
 .dock-icon-only .dock-icon img {
+	width: 32px;
+	height: 32px;
+}
+
+.dock-icon img.bloom-settings-icon {
 	width: 32px;
 	height: 32px;
 }
@@ -811,4 +784,10 @@ body {
 	pointer-events: none;
 	white-space: nowrap;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* A tray-only app is running, but has no windows to focus or preview. */
+.window-dots .active-indicator.background-indicator {
+	background: #888;
+	box-shadow: none;
 }

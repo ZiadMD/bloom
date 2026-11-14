@@ -1,11 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod battery;
+mod bluetooth;
+mod buds;
 mod commands;
+mod diagnostics;
+mod dock_extras;
+mod i18n;
+mod jack;
+mod onboarding;
 mod services;
+mod settings_window;
+mod shelf;
+mod shelf_preview;
 mod state;
+mod tray;
 mod types;
 mod updater;
+mod usb;
 mod utils;
+mod wifi;
+mod window_region;
 
 use std::sync::atomic::Ordering;
 use tauri::Manager;
@@ -28,6 +43,15 @@ unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
 }
 
 fn main() {
+    let mut args = std::env::args_os();
+    if args.nth(1).as_deref() == Some(std::ffi::OsStr::new("--taskbar-watchdog")) {
+        if let (Some(pid), Some(marker)) = (args.next(), args.next()) {
+            if let Ok(pid) = pid.to_string_lossy().parse::<u32>() {
+                utils::run_taskbar_watchdog(pid, marker.into());
+            }
+        }
+        return;
+    }
     unsafe {
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
     }
@@ -80,10 +104,13 @@ fn main() {
         }
     }
 
+    diagnostics::initialize();
     setup_brightness_worker();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -92,6 +119,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             hide_native_osd,
             open_settings_window,
+            close_settings_window,
             open_wifi_settings,
             open_sound_settings,
             open_notification_center,
@@ -101,6 +129,10 @@ fn main() {
             resize_settings_window,
             hide_overlay,
             set_splash_fullscreen,
+            onboarding::get_onboarding_completed,
+            onboarding::complete_onboarding,
+            onboarding::open_onboarding,
+            onboarding::set_onboarding_active,
             sync_overlay_position,
             media_play_pause,
             media_next,
@@ -116,10 +148,21 @@ fn main() {
             launch_new_instance,
             update_dock_rect,
             update_notch_rect,
+            window_region::set_window_region,
             set_dock_hovered,
+            set_dock_popup_active,
             set_notch_hovered,
             set_notch_visible,
+            setup_shelf_drop,
+            shelf_thumbnail,
+            shelf_drag_icon,
+            shelf_prune,
+            shelf_open,
             get_active_windows,
+            get_tray_apps,
+            show_tray_context_menu,
+            activate_tray_icon,
+            open_system_action,
             get_app_icon,
             get_installed_apps,
             save_pinned_apps,
@@ -144,6 +187,7 @@ fn main() {
             set_volume_mixer_rect,
             clear_volume_mixer_rect,
             save_setting,
+            i18n::set_tray_language,
             load_settings,
             settings_file_readable,
             capture_window_thumbnail,
@@ -156,21 +200,42 @@ fn main() {
             set_brightness,
             get_battery_saver_state,
             open_battery_saver_settings,
+            battery::get_battery_details,
             get_system_accent_color,
             get_cpu_usage,
             get_ram_usage,
             get_disk_space,
             get_network_speed,
-            export_settings,
-            import_settings,
+            export_settings_to_file,
+            import_settings_from_file,
             reset_settings,
-            read_settings_from_path,
-            write_settings_to_path,
             updater::check_for_updates,
             updater::install_update,
-            updater::get_update_state
+            updater::get_update_state,
+            dock_extras::get_dock_extras,
+            dock_extras::open_dock_extra,
+            dock_extras::eject_dock_extra,
+            dock_extras::get_dock_drives,
+            wifi::wifi_list_networks,
+            wifi::wifi_scan,
+            wifi::wifi_connect,
+            wifi::wifi_disconnect,
+            wifi::wifi_forget,
+            wifi::wifi_open_settings,
+            bluetooth::bluetooth_list_devices,
+            bluetooth::bluetooth_set_connected,
+            bluetooth::bluetooth_discovery,
+            bluetooth::bluetooth_pair,
+            bluetooth::bluetooth_pairing_respond,
+            bluetooth::bluetooth_unpair,
+            bluetooth::bluetooth_refresh_buds,
+            usb::usb_list_devices,
+            jack::jack_list_devices
         ])
         .setup(|app| {
+            if let Err(error) = onboarding::initialize(app.handle()) {
+                crate::diagnostics::record("onboarding_state", &error);
+            }
             init_taskbar_marker(app.handle());
             // Populate the settings cache before anything else: a webview can
             // invoke save_setting as soon as it loads, which happens before the
@@ -195,7 +260,19 @@ fn main() {
             }
 
             let window = app.get_webview_window("main").unwrap();
+            // tao rebuilds the extended style from its own flags whenever one
+            // changes (show, hide, ...). With its ignore-cursor flag on, every
+            // rebuild keeps the notch window layered, which its window region
+            // needs to stay transparent; set_click_through then drives the
+            // click-through bit directly. The worst a rebuild does is make the
+            // window click-through until the next cursor update.
+            let _ = window.set_ignore_cursor_events(true);
             let dock_win = app.get_webview_window("dock").unwrap();
+            // Same for the dock window, which has a region too.
+            let _ = dock_win.set_ignore_cursor_events(true);
+            if let Ok(hwnd) = dock_win.hwnd() {
+                DOCK_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
+            }
 
             // Sync window rects initially and on event
             let win_clone = window.clone();
@@ -279,6 +356,9 @@ fn main() {
             // take effect on a window that has never been shown. Show it once
             // to register it with the compositor, then hide immediately.
             if let Some(ov_win) = app.get_webview_window("overlay") {
+                // Layered from the start, like the notch and dock (see
+                // set_click_through): the overlay has a window region too.
+                let _ = ov_win.set_ignore_cursor_events(true);
                 let _ = ov_win.show();
                 let _ = ov_win.hide();
                 let overlay_handle = app.handle().clone();
@@ -306,10 +386,15 @@ fn main() {
             trigger_app_scan();
             let tx = setup_system_worker(app.handle().clone());
             let _ = COMMAND_SENDER.set(tx.clone());
-            let _hook = services::setup_keyboard_hook(app.handle().clone());
+            services::setup_keyboard_hook(app.handle().clone());
             setup_taskbar_hook();
             setup_audio_visualization(app.handle().clone());
             setup_settings_watcher(app.handle().clone());
+            diagnostics::record("services_ready", "hooks and settings watcher initialized");
+            wifi::setup_wifi_notifications(app.handle().clone());
+            bluetooth::setup_bluetooth_notifications(app.handle().clone());
+            usb::setup_usb_notifications(app.handle().clone());
+            jack::setup_jack_notifications(app.handle().clone());
 
             // Listen for second-instance signal to open settings
             if let Some(&h_event) = SINGLE_INSTANCE_EVENT_HANDLE.get() {
@@ -329,19 +414,6 @@ fn main() {
                 }
             }
 
-            if let Some(settings_win) = app.get_webview_window("settings") {
-                #[cfg(target_os = "windows")]
-                {
-                    let _ = window_vibrancy::apply_mica(&settings_win, None);
-                }
-                let win_clone = settings_win.clone();
-                settings_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = win_clone.hide();
-                    }
-                });
-            }
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -351,6 +423,13 @@ fn main() {
                 let settings_item =
                     MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
+                app.manage(i18n::TrayMessages {
+                    settings: settings_item,
+                    restart: restart_item,
+                    quit: quit_item,
+                });
+                let locale = get_setting_str(app.handle(), "bloom-language").unwrap_or_default();
+                let _ = i18n::set_tray_language(app.handle().clone(), locale);
                 let ah = app.handle().clone();
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())
@@ -358,13 +437,9 @@ fn main() {
                     .menu(&menu)
                     .on_menu_event(move |_, event| match event.id().as_ref() {
                         "quit" => {
+                            diagnostics::record("shutdown", "source=tray");
                             SHUTTING_DOWN.store(true, Ordering::Relaxed);
-                            if let Some(w) = ah.get_webview_window("main") {
-                                unregister_appbar_native(w.hwnd().unwrap());
-                            }
-                            if let Some(w) = ah.get_webview_window("dock") {
-                                unregister_appbar_native(w.hwnd().unwrap());
-                            }
+                            crate::commands::release_appbars(&ah);
                             set_taskbar_visibility(true, true);
                             NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
                             set_native_osd_suppressed(false);
@@ -372,13 +447,9 @@ fn main() {
                             ah.exit(0);
                         }
                         "restart" => {
+                            diagnostics::record("restart", "source=tray");
                             SHUTTING_DOWN.store(true, Ordering::Relaxed);
-                            if let Some(w) = ah.get_webview_window("main") {
-                                unregister_appbar_native(w.hwnd().unwrap());
-                            }
-                            if let Some(w) = ah.get_webview_window("dock") {
-                                unregister_appbar_native(w.hwnd().unwrap());
-                            }
+                            crate::commands::release_appbars(&ah);
                             if let Some(w) = ah.get_webview_window("settings") {
                                 let _ = w.destroy();
                             }
@@ -412,6 +483,7 @@ fn main() {
         .expect("error while building tauri application");
     app.run(|_, event| {
         if let tauri::RunEvent::Exit = event {
+            diagnostics::record("exit", "restoring native taskbar");
             set_taskbar_visibility(true, true);
             NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
             set_native_osd_suppressed(false);

@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import {
 	PanelTop,
 	Calendar,
@@ -9,26 +10,49 @@ import {
 	Circle,
 	CloudSun,
 	Timer,
+	Archive,
+	Headphones,
+	SlidersHorizontal,
 	X
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
-import { useTranslation } from "../i18n";
 import type { WidgetConfig } from "./types";
+import type { NotchPanelChoice } from "./useSettings";
+
+/** The notch's panels, in the order the notch cycles through them. */
+const PANEL_CHOICES: readonly (readonly [NotchPanelChoice, string])[] = [
+	["calendar", "Calendar"],
+	["command-center", "Command Center"],
+	["devices", "Connected devices"]
+];
 
 interface NotchTabProps {
 	notchMode: string;
 	setNotchModeValue: (mode: string) => void;
 	notchEdgeDelay: number;
 	handleNotchEdgeDelayChange: (val: number) => void;
+	calendarMondayFirst: boolean;
+	toggleCalendarMondayFirst: () => void;
 	calendarEnabled: boolean;
 	toggleCalendar: () => void;
+	controlsPanelEnabled: boolean;
+	toggleControlsPanel: () => void;
+	devicesPanelEnabled: boolean;
+	toggleDevicesPanel: () => void;
+	enabledPanelCount: number;
+	notchRememberPanel: boolean;
+	toggleNotchRememberPanel: () => void;
+	notchDefaultPanel: NotchPanelChoice;
+	changeNotchDefaultPanel: (panel: NotchPanelChoice) => void;
 	timerSoundEnabled: boolean;
 	toggleTimerSound: () => void;
 	musicModeEnabled: boolean;
 	toggleMusicMode: () => void;
 	musicCompactNotch: boolean;
 	toggleMusicCompactNotch: () => void;
+	shelfPersist: boolean;
+	toggleShelfPersist: () => void;
 	mediaLayout: "classic" | "compact";
 	toggleMediaLayout: (layout: "classic" | "compact") => void;
 	mediaAmbienceEnabled: boolean;
@@ -60,14 +84,27 @@ export function NotchTab({
 	setNotchModeValue,
 	notchEdgeDelay,
 	handleNotchEdgeDelayChange,
+	calendarMondayFirst,
+	toggleCalendarMondayFirst,
 	calendarEnabled,
 	toggleCalendar,
+	controlsPanelEnabled,
+	toggleControlsPanel,
+	devicesPanelEnabled,
+	toggleDevicesPanel,
+	enabledPanelCount,
+	notchRememberPanel,
+	toggleNotchRememberPanel,
+	notchDefaultPanel,
+	changeNotchDefaultPanel,
 	timerSoundEnabled,
 	toggleTimerSound,
 	musicModeEnabled,
 	toggleMusicMode,
 	musicCompactNotch,
 	toggleMusicCompactNotch,
+	shelfPersist,
+	toggleShelfPersist,
 	mediaLayout,
 	toggleMediaLayout,
 	mediaAmbienceEnabled,
@@ -88,13 +125,24 @@ export function NotchTab({
 	statusWidgets,
 	handleWidgetsChange
 }: NotchTabProps) {
-	const { t } = useTranslation();
+	useTranslation();
+	const panelOn: Record<NotchPanelChoice, boolean> = {
+		calendar: calendarEnabled,
+		"command-center": controlsPanelEnabled,
+		devices: devicesPanelEnabled
+	};
+	const firstPanelOn = PANEL_CHOICES.find(([panel]) => panelOn[panel])?.[0] ?? "command-center";
+	// The notch needs at least one panel, so the last one on stays on.
+	const isLastPanel = (on: boolean) => on && enabledPanelCount <= 1;
+	const lastPanelTitle = (on: boolean) =>
+		isLastPanel(on) ? "The notch needs at least one panel" : undefined;
 
 	return (
 		<>
-			<div className="setting-group-label">{t("settings.groups.notch")}</div>
+			<div className="setting-group-label">{t("settings.tabs.notch")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="notch-behavior"
 					icon={PanelTop}
 					label={t("settings.notch.behavior")}
 					desc={t("settings.notch.behaviorDesc")}
@@ -112,12 +160,15 @@ export function NotchTab({
 
 				{notchMode !== "fixed" && (
 					<SettingRow
+						previewId="peek-delay"
 						icon={Timer}
 						label={t("settings.notch.peekDelay")}
 						desc={
 							notchEdgeDelay === 0
 								? t("settings.notch.peekInstant")
-								: t("settings.notch.peekDelayed", { ms: notchEdgeDelay })
+								: t("ui.notchTab.restOnTheTopEdgeForNotchedgedelayMsToReveal", {
+										notchEdgeDelay: notchEdgeDelay
+									})
 						}
 					>
 						<input
@@ -131,20 +182,48 @@ export function NotchTab({
 						/>
 					</SettingRow>
 				)}
+			</div>
 
+			<div className="setting-group-label">{t("ui.notchTab.panels")}</div>
+			<div className="setting-group">
 				<SettingRow
+					previewId="calendar-timer"
 					icon={Calendar}
 					label={t("settings.notch.calendar")}
 					desc={t("settings.notch.calendarDesc")}
 				>
-					<label className="toggle-switch">
-						<input type="checkbox" checked={calendarEnabled} onChange={toggleCalendar} />
+					<label className="toggle-switch" title={lastPanelTitle(calendarEnabled)}>
+						<input
+							type="checkbox"
+							checked={calendarEnabled}
+							disabled={isLastPanel(calendarEnabled)}
+							onChange={toggleCalendar}
+						/>
 						<span className="slider"></span>
 					</label>
 				</SettingRow>
 
 				{calendarEnabled && (
 					<SettingRow
+						previewId="monday-first-calendar"
+						icon={Calendar}
+						label={t("ui.notchTab.mondayFirstCalendar")}
+						desc={t("ui.notchTab.startEachWeekOnMondayInsteadOfSunday")}
+					>
+						<label className="toggle-switch">
+							<input
+								type="checkbox"
+								checked={calendarMondayFirst}
+								onChange={toggleCalendarMondayFirst}
+							/>
+							<span className="slider" />
+						</label>
+					</SettingRow>
+				)}
+
+				{calendarEnabled && (
+					<SettingRow
+						previewId="timer-sound"
 						icon={BellRing}
 						label={t("settings.notch.timerSound")}
 						desc={t("settings.notch.timerSoundDesc")}
@@ -157,6 +236,81 @@ export function NotchTab({
 				)}
 
 				<SettingRow
+					previewId="command-center"
+					icon={SlidersHorizontal}
+					label={t("ui.notchTab.commandCenter")}
+					desc={t("ui.notchTab.quickTogglesWiFiAndBluetooth")}
+				>
+					<label className="toggle-switch" title={lastPanelTitle(controlsPanelEnabled)}>
+						<input
+							type="checkbox"
+							checked={controlsPanelEnabled}
+							disabled={isLastPanel(controlsPanelEnabled)}
+							onChange={toggleControlsPanel}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					previewId="connected-devices"
+					icon={Headphones}
+					label={t("ui.notchTab.connectedDevices")}
+					desc={t("ui.notchTab.batteriesAndAudioOfYourConnectedDevices")}
+				>
+					<label className="toggle-switch" title={lastPanelTitle(devicesPanelEnabled)}>
+						<input
+							type="checkbox"
+							checked={devicesPanelEnabled}
+							disabled={isLastPanel(devicesPanelEnabled)}
+							onChange={toggleDevicesPanel}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					previewId="remember-last-panel"
+					icon={PanelTop}
+					label={t("ui.notchTab.rememberLastPanel")}
+					desc={t("ui.notchTab.reopenThePanelYouLastUsedTurnOffToChoose")}
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={notchRememberPanel}
+							onChange={toggleNotchRememberPanel}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				{!notchRememberPanel && (
+					<SettingRow
+						previewId="default-panel"
+						icon={PanelTop}
+						label={t("ui.notchTab.defaultPanel")}
+						desc={t("ui.notchTab.openThisPanelWhenYouClickTheNotch")}
+					>
+						<select
+							className="settings-select"
+							value={panelOn[notchDefaultPanel] ? notchDefaultPanel : firstPanelOn}
+							onChange={(e) => changeNotchDefaultPanel(e.target.value as NotchPanelChoice)}
+						>
+							{PANEL_CHOICES.map(([panel, label]) => (
+								<option key={panel} value={panel} disabled={!panelOn[panel]}>
+									{label}
+								</option>
+							))}
+						</select>
+					</SettingRow>
+				)}
+			</div>
+
+			<div className="setting-group-label">{t("ui.dockExtras.music")}</div>
+			<div className="setting-group">
+				<SettingRow
+					previewId="music-mode"
 					icon={Music}
 					label={t("settings.notch.music")}
 					desc={t("settings.notch.musicDesc")}
@@ -168,8 +322,13 @@ export function NotchTab({
 				</SettingRow>
 
 				{musicModeEnabled && (
-					<>
+					<details className="settings-disclosure">
+						<summary>
+							{t("ui.notchTab.musicOptions")}
+							<span>{t("ui.notchTab.layoutAndVisualEffects")}</span>
+						</summary>
 						<SettingRow
+							previewId="compact-mode"
 							icon={Minimize2}
 							label={t("settings.notch.compact")}
 							desc={t("settings.notch.compactDesc")}
@@ -185,6 +344,7 @@ export function NotchTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="media-layout"
 							icon={LayoutList}
 							label={t("settings.notch.mediaLayout")}
 							desc={t("settings.notch.mediaLayoutDesc")}
@@ -206,6 +366,7 @@ export function NotchTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="ambient-glow"
 							icon={Sparkles}
 							label={t("settings.notch.ambience")}
 							desc={t("settings.notch.ambienceDesc")}
@@ -217,6 +378,7 @@ export function NotchTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="compact-glow"
 							icon={Circle}
 							label={t("settings.notch.compactGlow")}
 							desc={t("settings.notch.compactGlowDesc")}
@@ -231,21 +393,38 @@ export function NotchTab({
 								<span className="slider"></span>
 							</label>
 						</SettingRow>
-					</>
+					</details>
 				)}
+			</div>
+
+			<div className="setting-group-label">{t("ui.notchTab.shelf")}</div>
+			<div className="setting-group">
+				<SettingRow
+					previewId="keep-items"
+					icon={Archive}
+					label={t("ui.notchTab.keepItems")}
+					desc={t("ui.notchTab.keepShelfItemsAfterBloomCloses")}
+					divider={false}
+				>
+					<label className="toggle-switch">
+						<input type="checkbox" checked={shelfPersist} onChange={toggleShelfPersist} />
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
 			</div>
 
 			<div className="setting-group-label">{t("settings.groups.weather")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="weather-status"
 					icon={CloudSun}
 					label={t("settings.notch.weather")}
 					desc={cityName || t("settings.notch.weatherAuto")}
 				>
 					<div className="weather-controls">
 						<div className="unit-toggle-minimal" onClick={toggleTempUnit}>
-							<span className={!tempUnitFahrenheit ? "active" : ""}>C</span>
-							<span className={tempUnitFahrenheit ? "active" : ""}>F</span>
+							<span className={!tempUnitFahrenheit ? "active" : ""}>{t("ui.app.c")}</span>
+							<span className={tempUnitFahrenheit ? "active" : ""}>{t("ui.app.f")}</span>
 						</div>
 						<label className="toggle-switch">
 							<input type="checkbox" checked={weatherEnabled} onChange={toggleWeather} />
@@ -310,7 +489,13 @@ export function NotchTab({
 
 			<div className="setting-group-label">{t("settings.groups.widgets")}</div>
 			<div className="setting-group">
-				<StatusWidgetConfig value={statusWidgets} onChange={handleWidgetsChange} />
+				<details className="settings-disclosure settings-disclosure-standalone">
+					<summary>
+						{t("ui.notchTab.chooseStatusWidgets")}
+						<span>{t("ui.notchTab.arrangeWhatAppearsBesideTheClock")}</span>
+					</summary>
+					<StatusWidgetConfig value={statusWidgets} onChange={handleWidgetsChange} />
+				</details>
 			</div>
 		</>
 	);

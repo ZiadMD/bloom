@@ -1,6 +1,15 @@
-import { Palette, Droplet, Contrast, Droplets, Sun, Square, Maximize2 } from "lucide-react";
+import { t, useTranslation } from "../i18n";
+import {
+	Palette,
+	Droplet,
+	Contrast,
+	Droplets,
+	Sun,
+	Square,
+	Maximize2,
+	Sparkles
+} from "lucide-react";
 import { SettingRow } from "./SettingRow";
-import { useTranslation } from "../i18n";
 
 interface AppearanceTabProps {
 	themeMode: string;
@@ -15,6 +24,8 @@ interface AppearanceTabProps {
 	handleBrightnessChange: (val: number) => void;
 	cornersEnabled: boolean;
 	toggleCorners: () => void;
+	edgeShineEnabled: boolean;
+	toggleEdgeShine: () => void;
 	scale: number;
 	handleScaleChange: (val: number) => void;
 }
@@ -32,10 +43,12 @@ export function AppearanceTab({
 	handleBrightnessChange,
 	cornersEnabled,
 	toggleCorners,
+	edgeShineEnabled,
+	toggleEdgeShine,
 	scale,
 	handleScaleChange
 }: AppearanceTabProps) {
-	const { t } = useTranslation();
+	useTranslation();
 	const showCustomColor = themeMode === "custom";
 	const showAdvancedSliders = themeMode === "custom" || themeMode === "adaptive";
 
@@ -44,6 +57,7 @@ export function AppearanceTab({
 			<div className="setting-group-label">{t("settings.groups.theme")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="theme-mode"
 					icon={Palette}
 					label={t("settings.appearance.themeMode")}
 					desc={t("settings.appearance.themeModeDesc")}
@@ -62,6 +76,7 @@ export function AppearanceTab({
 
 				{showCustomColor && (
 					<SettingRow
+						previewId="custom-theme-color"
 						icon={Droplet}
 						label={t("settings.appearance.customColor")}
 						desc={t("settings.appearance.customColorDesc")}
@@ -79,6 +94,7 @@ export function AppearanceTab({
 				)}
 
 				<SettingRow
+					previewId="background-opacity"
 					icon={Contrast}
 					label={t("settings.appearance.opacity")}
 					desc={t("settings.appearance.opacityDesc", { percent: Math.round(themeOpacity * 100) })}
@@ -98,6 +114,7 @@ export function AppearanceTab({
 				{showAdvancedSliders && (
 					<>
 						<SettingRow
+							previewId="color-saturation"
 							icon={Droplets}
 							label={t("settings.appearance.saturation")}
 							desc={t("settings.appearance.saturationDesc", {
@@ -116,6 +133,7 @@ export function AppearanceTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="background-brightness"
 							icon={Sun}
 							label={t("settings.appearance.brightness")}
 							desc={t("settings.appearance.brightnessDesc", {
@@ -140,6 +158,23 @@ export function AppearanceTab({
 			<div className="setting-group-label">{t("settings.groups.display")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="edge-shine"
+					icon={Sparkles}
+					label={t("ui.appearanceTab.edgeShine")}
+					desc={t("ui.appearanceTab.softReflectionsAroundTheDockAndNotchTurnOffIf")}
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							aria-label={t("ui.appearanceTab.edgeShine")}
+							checked={edgeShineEnabled}
+							onChange={toggleEdgeShine}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+				<SettingRow
+					previewId="screen-corners"
 					icon={Square}
 					label={t("settings.appearance.corners")}
 					desc={t("settings.appearance.cornersDesc")}
@@ -151,6 +186,7 @@ export function AppearanceTab({
 				</SettingRow>
 
 				<SettingRow
+					previewId="ui-font-scale"
 					icon={Maximize2}
 					label={t("settings.appearance.scale")}
 					desc={t("settings.appearance.scaleDesc", { percent: Math.round(scale * 100) })}

@@ -1,3 +1,5 @@
+import { t, useTranslation, LOCALES, type LanguageSetting } from "../i18n";
+import { useState } from "react";
 import {
 	Power,
 	Download,
@@ -6,16 +8,15 @@ import {
 	RefreshCw,
 	RotateCcw,
 	LogOut,
-	Languages
+	Compass
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
-import { useTranslation, LOCALES, type LanguageSetting } from "../i18n";
 
 interface GeneralTabProps {
-	autostart: boolean;
-	toggleAutostart: () => void;
 	language: LanguageSetting;
 	handleLanguageChange: (code: string) => void;
+	autostart: boolean;
+	toggleAutostart: () => void;
 	timeFormat24h: boolean;
 	toggleTimeFormat24h: () => void;
 	showUpdateIndicator: boolean;
@@ -25,6 +26,7 @@ interface GeneralTabProps {
 	restartBloom: () => void;
 	resetToDefaults: () => void;
 	quitBloom: () => void;
+	openOnboarding: () => Promise<void>;
 }
 
 export function GeneralTab({
@@ -40,18 +42,21 @@ export function GeneralTab({
 	handleThresholdChange,
 	restartBloom,
 	resetToDefaults,
-	quitBloom
+	quitBloom,
+	openOnboarding
 }: GeneralTabProps) {
-	const { t } = useTranslation();
-
+	useTranslation();
+	const [setupError, setSetupError] = useState("");
+	const [openingSetup, setOpeningSetup] = useState(false);
 	return (
 		<>
 			<div className="setting-group-label">{t("settings.groups.system")}</div>
 			<div className="setting-group">
 				<SettingRow
-					icon={Languages}
+					previewId="language"
+					icon={Clock}
 					label={t("settings.general.language")}
-					desc={t("settings.general.languageDesc")}
+					desc={t("settings.general.languageFallbackDesc")}
 				>
 					<select
 						className="settings-select"
@@ -66,8 +71,8 @@ export function GeneralTab({
 						))}
 					</select>
 				</SettingRow>
-
 				<SettingRow
+					previewId="launch-at-login"
 					icon={Power}
 					label={t("settings.general.launchAtLogin")}
 					desc={t("settings.general.launchAtLoginDesc")}
@@ -79,6 +84,7 @@ export function GeneralTab({
 				</SettingRow>
 
 				<SettingRow
+					previewId="update-indicator"
 					icon={Download}
 					label={t("settings.general.updateIndicator")}
 					desc={t("settings.general.updateIndicatorDesc")}
@@ -90,6 +96,7 @@ export function GeneralTab({
 				</SettingRow>
 
 				<SettingRow
+					previewId="24-hour-time"
 					icon={Clock}
 					label={t("settings.general.time24h")}
 					desc={t("settings.general.time24hDesc")}
@@ -101,6 +108,7 @@ export function GeneralTab({
 				</SettingRow>
 
 				<SettingRow
+					previewId="low-battery-alert"
 					icon={BatteryWarning}
 					label={t("settings.general.lowBattery")}
 					desc={t("settings.general.lowBatteryDesc", { percent: lowBatteryThreshold })}
@@ -121,6 +129,37 @@ export function GeneralTab({
 			<div className="setting-group-label">{t("settings.groups.app")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="welcome-to-bloom"
+					icon={Compass}
+					label={t("ui.generalTab.welcomeToBloom")}
+					desc={t("ui.generalTab.replaySetupAndTheQuickGuide")}
+				>
+					<button
+						type="button"
+						className="onboarding-settings-launch"
+						disabled={openingSetup}
+						onClick={async () => {
+							setOpeningSetup(true);
+							setSetupError("");
+							try {
+								await openOnboarding();
+							} catch (error) {
+								setSetupError(String(error));
+							} finally {
+								setOpeningSetup(false);
+							}
+						}}
+					>
+						{t("ui.generalTab.openSetup")}
+					</button>
+				</SettingRow>
+				{setupError && (
+					<p className="onboarding-settings-error" role="alert">
+						{setupError}
+					</p>
+				)}
+				<SettingRow
+					previewId="reset-to-defaults"
 					icon={RotateCcw}
 					label={t("settings.general.reset")}
 					desc={t("settings.general.resetDesc")}
@@ -129,6 +168,7 @@ export function GeneralTab({
 					onClick={resetToDefaults}
 				/>
 				<SettingRow
+					previewId="restart-bloom"
 					icon={RefreshCw}
 					label={t("settings.general.restart")}
 					desc={t("settings.general.restartDesc")}
@@ -136,6 +176,7 @@ export function GeneralTab({
 					onClick={restartBloom}
 				/>
 				<SettingRow
+					previewId="quit-bloom"
 					icon={LogOut}
 					label={t("settings.general.quit")}
 					desc={t("settings.general.quitDesc")}

@@ -1,6 +1,6 @@
 import { Volume2, Sun, ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 import { SettingRow } from "./SettingRow";
-import { useTranslation } from "../i18n";
+import { t, useTranslation } from "../i18n";
 
 interface OverlaysTabProps {
 	volumeOverlayEnabled: boolean;
@@ -23,13 +23,14 @@ export function OverlaysTab({
 	brightnessEdgeEnabled,
 	toggleBrightnessEdge
 }: OverlaysTabProps) {
-	const { t } = useTranslation();
+	useTranslation();
 
 	return (
 		<>
 			<div className="setting-group-label">{t("settings.groups.overlays")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="volume-hud"
 					icon={Volume2}
 					label={t("settings.overlays.volume")}
 					desc={t("settings.overlays.volumeDesc")}
@@ -42,6 +43,7 @@ export function OverlaysTab({
 
 				{volumeOverlayEnabled && (
 					<SettingRow
+						previewId="volume-edge-hover"
 						icon={ArrowLeftToLine}
 						label={t("settings.overlays.volumeEdge")}
 						desc={t("settings.overlays.volumeEdgeDesc")}
@@ -54,6 +56,7 @@ export function OverlaysTab({
 				)}
 
 				<SettingRow
+					previewId="brightness-hud"
 					icon={Sun}
 					label={t("settings.overlays.brightness")}
 					desc={t("settings.overlays.brightnessDesc")}
@@ -70,6 +73,7 @@ export function OverlaysTab({
 
 				{brightnessOverlayEnabled && (
 					<SettingRow
+						previewId="brightness-edge-hover"
 						icon={ArrowRightToLine}
 						label={t("settings.overlays.brightnessEdge")}
 						desc={t("settings.overlays.brightnessEdgeDesc")}

@@ -1,4 +1,5 @@
-import { StrictMode, useState, useEffect } from "react";
+import { t, useTranslation, initI18n } from "./i18n";
+import { StrictMode, useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Effect } from "@tauri-apps/api/window";
@@ -17,7 +18,7 @@ import {
 import type { SettingsTab } from "./settings/index";
 import { useAnnouncement } from "./hooks/useAnnouncement";
 import { initTheme } from "./theme";
-import { initI18n, useTranslation } from "./i18n";
+import { FeaturePreview } from "./settings/FeaturePreview";
 import "./Settings.css";
 
 const appWindow = getCurrentWebviewWindow();
@@ -31,10 +32,55 @@ const TABS: { id: SettingsTab; icon: typeof Settings }[] = [
 	{ id: "about", icon: Info }
 ];
 
+function getTAB_COPY(): Record<SettingsTab, string> {
+	return {
+		general: t("ui.settings.theEssentialsForHowBloomStartsAndRuns"),
+		appearance: t("ui.settings.makeEverySurfaceFeelAtHomeOnYourDesktop"),
+		notch: t("ui.settings.chooseWhatAppearsAtTheTopOfYourScreen"),
+		dock: t("ui.settings.shapeTheTaskbarReplacementAroundYourWorkflow"),
+		overlays: t("ui.settings.keepQuickControlsVisibleOnlyWhenYouNeedThem"),
+		about: t("ui.settings.versionUpdatesAndYourSettingsData")
+	};
+}
+
 function SettingsApp() {
+	useTranslation();
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+	const [previewFocus, setPreviewFocus] = useState("");
+	const contentRef = useRef<HTMLDivElement>(null);
 	const settings = useSettings();
-	const { t } = useTranslation();
+	useEffect(() => {
+		if (!settings.isLoaded) return;
+		document.documentElement.dataset.settingsReady = "true";
+		document.getElementById("settings-loading")?.setAttribute("aria-hidden", "true");
+		document.getElementById("root")?.setAttribute("aria-busy", "false");
+	}, [settings.isLoaded]);
+	const closingRef = useRef(false);
+	const [isClosing, setIsClosing] = useState(false);
+	const { flushPendingSaves } = settings;
+	const closeSettings = useCallback(async () => {
+		if (closingRef.current) return;
+		closingRef.current = true;
+		setIsClosing(true);
+		try {
+			if (await flushPendingSaves()) await invoke("close_settings_window");
+		} catch (error) {
+			console.error("Failed to close Settings:", error);
+		} finally {
+			closingRef.current = false;
+			setIsClosing(false);
+		}
+	}, [flushPendingSaves]);
+
+	useEffect(() => {
+		const unlisten = appWindow.onCloseRequested((event) => {
+			event.preventDefault();
+			return closeSettings();
+		});
+		return () => {
+			void unlisten.then((fn) => fn());
+		};
+	}, [closeSettings]);
 	const { announcement, dismissed, dismiss } = useAnnouncement();
 
 	useEffect(() => {
@@ -59,21 +105,23 @@ function SettingsApp() {
 
 	useEffect(() => {
 		invoke("resize_settings_window", {
-			width: 620 * settings.scale,
-			height: 480 * settings.scale
+			width: 740 * settings.scale,
+			height: 560 * settings.scale
 		}).catch(console.error);
 	}, [settings.scale]);
+
+	useEffect(() => {
+		if (contentRef.current) contentRef.current.scrollTop = 0;
+	}, [activeTab]);
 
 	const handleClose = async (e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		try {
-			await appWindow.hide();
-		} catch {}
+		await closeSettings();
 	};
 
 	return (
-		<div className="settings-container" style={{ zoom: settings.scale }}>
+		<div className="settings-container" style={{ zoom: settings.scale }} inert={isClosing}>
 			<div className="title-bar" data-tauri-drag-region>
 				<span className="title-text" data-tauri-drag-region>
 					{t("settings.title")}
@@ -85,6 +133,10 @@ function SettingsApp() {
 
 			<div className="settings-body">
 				<div className="settings-sidebar">
+					<div className="settings-sidebar-intro">
+						<strong>Bloom</strong>
+						<span>{t("ui.settings.makeItYours")}</span>
+					</div>
 					{TABS.map(({ id, icon: Icon }) => (
 						<button
 							key={id}
@@ -99,7 +151,40 @@ function SettingsApp() {
 					))}
 				</div>
 
-				<div className="settings-content">
+				<div
+					className="settings-content"
+					ref={contentRef}
+					onChangeCapture={(event) => {
+						const target = event.target as HTMLElement;
+						const id =
+							target.closest<HTMLElement>("[data-preview-id]")?.dataset.previewId ??
+							(target.closest(".settings-disclosure-standalone") ? "status-widgets" : undefined);
+						if (id) setPreviewFocus(activeTab + ":" + id + ":" + Date.now());
+					}}
+					onClickCapture={(event) => {
+						const id = (event.target as HTMLElement).closest<HTMLElement>("[data-preview-id]")
+							?.dataset.previewId;
+						if (id === "start-menu-icon" || id === "weather-status") {
+							setPreviewFocus(activeTab + ":" + id + ":" + Date.now());
+						}
+					}}
+				>
+					{settings.saveError && (
+						<div className="settings-save-error" role="alert">
+							<span>
+								{t("ui.settings.changesCouldNotBeSavedYourSavedSettingsHaveBeen")}
+								{settings.saveErrorDetail && (
+									<small style={{ display: "block" }}>{settings.saveErrorDetail}</small>
+								)}
+							</span>
+							<button
+								onClick={settings.dismissSaveError}
+								aria-label={t("ui.settings.dismissSaveError")}
+							>
+								<X size={14} strokeWidth={2} />
+							</button>
+						</div>
+					)}
 					{announcement && !dismissed && (
 						<div className={`announcement-banner severity-${announcement.severity}`}>
 							<Megaphone size={14} className="announcement-banner-icon" />
@@ -126,6 +211,11 @@ function SettingsApp() {
 							</button>
 						</div>
 					)}
+					<div className="settings-page-heading">
+						<h1>{t(`settings.tabs.${activeTab}`)}</h1>
+						<p>{getTAB_COPY()[activeTab]}</p>
+					</div>
+					<FeaturePreview tab={activeTab} settings={settings} focus={previewFocus} />
 					{activeTab === "general" && (
 						<GeneralTab
 							autostart={settings.autostart}
@@ -141,6 +231,11 @@ function SettingsApp() {
 							restartBloom={settings.restartBloom}
 							resetToDefaults={settings.resetToDefaults}
 							quitBloom={settings.quitBloom}
+							openOnboarding={async () => {
+								if (!(await flushPendingSaves()))
+									throw new Error("Save your settings successfully before opening setup.");
+								await invoke("open_onboarding");
+							}}
 						/>
 					)}
 					{activeTab === "appearance" && (
@@ -157,6 +252,8 @@ function SettingsApp() {
 							handleBrightnessChange={settings.handleBrightnessChange}
 							cornersEnabled={settings.cornersEnabled}
 							toggleCorners={settings.toggleCorners}
+							edgeShineEnabled={settings.edgeShineEnabled}
+							toggleEdgeShine={settings.toggleEdgeShine}
 							scale={settings.scale}
 							handleScaleChange={settings.handleScaleChange}
 						/>
@@ -167,14 +264,27 @@ function SettingsApp() {
 							setNotchModeValue={settings.setNotchModeValue}
 							notchEdgeDelay={settings.notchEdgeDelay}
 							handleNotchEdgeDelayChange={settings.handleNotchEdgeDelayChange}
+							calendarMondayFirst={settings.calendarMondayFirst}
+							toggleCalendarMondayFirst={settings.toggleCalendarMondayFirst}
 							calendarEnabled={settings.calendarEnabled}
 							toggleCalendar={settings.toggleCalendar}
+							controlsPanelEnabled={settings.controlsPanelEnabled}
+							toggleControlsPanel={settings.toggleControlsPanel}
+							devicesPanelEnabled={settings.devicesPanelEnabled}
+							toggleDevicesPanel={settings.toggleDevicesPanel}
+							enabledPanelCount={settings.enabledPanelCount}
+							notchRememberPanel={settings.notchRememberPanel}
+							toggleNotchRememberPanel={settings.toggleNotchRememberPanel}
+							notchDefaultPanel={settings.notchDefaultPanel}
+							changeNotchDefaultPanel={settings.changeNotchDefaultPanel}
 							timerSoundEnabled={settings.timerSoundEnabled}
 							toggleTimerSound={settings.toggleTimerSound}
 							musicModeEnabled={settings.musicModeEnabled}
 							toggleMusicMode={settings.toggleMusicMode}
 							musicCompactNotch={settings.musicCompactNotch}
 							toggleMusicCompactNotch={settings.toggleMusicCompactNotch}
+							shelfPersist={settings.shelfPersist}
+							toggleShelfPersist={settings.toggleShelfPersist}
 							mediaLayout={settings.mediaLayout}
 							toggleMediaLayout={settings.toggleMediaLayout}
 							mediaAmbienceEnabled={settings.mediaAmbienceEnabled}
@@ -202,14 +312,35 @@ function SettingsApp() {
 							toggleDock={settings.toggleDock}
 							dockMode={settings.dockMode}
 							setDockModeValue={settings.setDockModeValue}
+							dockEdgeDelay={settings.dockEdgeDelay}
+							handleDockEdgeDelayChange={settings.handleDockEdgeDelayChange}
 							dockPreviewEnabled={settings.dockPreviewEnabled}
 							toggleDockPreview={settings.toggleDockPreview}
+							dockShowBackgroundApps={settings.dockShowBackgroundApps}
+							toggleDockShowBackgroundApps={settings.toggleDockShowBackgroundApps}
 							dockIconOnly={settings.dockIconOnly}
 							toggleDockIconOnly={settings.toggleDockIconOnly}
+							dockSeparatorEnabled={settings.dockSeparatorEnabled}
+							toggleDockSeparator={settings.toggleDockSeparator}
 							dockAdaptive={settings.dockAdaptive}
 							toggleDockAdaptive={settings.toggleDockAdaptive}
 							dockWinNumberEnabled={settings.dockWinNumberEnabled}
 							toggleDockWinNumber={settings.toggleDockWinNumber}
+							dockExtrasPosition={settings.dockExtrasPosition}
+							handleDockExtrasPositionChange={settings.handleDockExtrasPositionChange}
+							dockExtrasDrives={settings.dockExtrasDrives}
+							toggleDockExtrasDrives={settings.toggleDockExtrasDrives}
+							dockExtrasHiddenDrives={settings.dockExtrasHiddenDrives}
+							toggleDockExtrasDrive={settings.toggleDockExtrasDrive}
+							dockExtrasRecycleBin={settings.dockExtrasRecycleBin}
+							toggleDockExtrasRecycleBin={settings.toggleDockExtrasRecycleBin}
+							dockTaskView={settings.dockTaskView}
+							toggleDockTaskView={settings.toggleDockTaskView}
+							dockExtrasFolders={settings.dockExtrasFolders}
+							toggleDockExtraFolder={settings.toggleDockExtraFolder}
+							dockExtrasCustomFolders={settings.dockExtrasCustomFolders}
+							handleAddDockExtraFolder={settings.handleAddDockExtraFolder}
+							handleRemoveDockExtraFolder={settings.handleRemoveDockExtraFolder}
 							startIcon={settings.startIcon}
 							handleStartIconChange={settings.handleStartIconChange}
 						/>

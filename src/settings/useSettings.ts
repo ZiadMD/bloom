@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+	getLocale,
+	normalizeLanguageSetting,
+	resolveLanguage,
+	setLocale,
+	t,
+	useTranslation,
+	type LanguageSetting
+} from "../i18n";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
@@ -7,27 +16,70 @@ import type { UpdateCheckResult } from "../updater";
 import { useSettingsSync } from "../hooks/useSettingsSync";
 import { reloadIfMirrorWasStale } from "../hooks/settingsMirror";
 import { hexToHsl } from "../theme";
-import { getLocale, resolveLanguage, setLocale, t, type LanguageSetting } from "../i18n";
+import { waitForPendingSaves } from "./pendingSaves";
+import {
+	addCustomFolder,
+	removeCustomFolder,
+	toggleEnabledFolder,
+	toggleHiddenDrive,
+	DEFAULT_ENABLED_FOLDERS
+} from "../dockExtras";
 import type { WidgetConfig } from "./types";
-
-function saveSetting(key: string, value: string) {
-	localStorage.setItem(key, value);
-	invoke("save_setting", { key, value }).catch(console.error);
-}
 
 function readBool(val: string | null): boolean {
 	return val === "true";
 }
 
+/** The notch panels a click can open. */
+export type NotchPanelChoice = "calendar" | "command-center" | "devices";
+
+function asPanelChoice(val: unknown): NotchPanelChoice {
+	return val === "command-center" || val === "devices" ? val : "calendar";
+}
+
 export function useSettings() {
+	useTranslation();
+	const [isLoaded, setIsLoaded] = useState(false);
+	const [saveError, setSaveError] = useState(
+		() => sessionStorage.getItem("bloom-settings-save-error") !== null
+	);
+	const [saveErrorDetail, setSaveErrorDetail] = useState(
+		() => sessionStorage.getItem("bloom-settings-save-error-detail") || ""
+	);
+	const saveQueue = useRef<Promise<void>>(Promise.resolve());
+	const saveFailed = useRef(false);
+	const flushPendingSaves = useCallback(async () => {
+		await waitForPendingSaves(() => saveQueue.current);
+		return !saveFailed.current;
+	}, []);
 	const [autostart, setAutostart] = useState(false);
+	useEffect(() => {
+		const unlisten = listen<boolean>("autostart-changed", ({ payload }) => setAutostart(payload));
+		return () => {
+			void unlisten.then((stop) => stop());
+		};
+	}, []);
 	const [weatherEnabled, setWeatherEnabled] = useState(true);
+	const [calendarMondayFirst, setCalendarMondayFirst] = useState(false);
 	const [calendarEnabled, setCalendarEnabled] = useState(true);
+	const [controlsPanelEnabled, setControlsPanelEnabled] = useState(true);
+	const [devicesPanelEnabled, setDevicesPanelEnabled] = useState(false);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
 	const [musicModeEnabled, setMusicModeEnabled] = useState(true);
+	const [notchRememberPanel, setNotchRememberPanel] = useState(
+		() =>
+			(localStorage.getItem("bloom-notch-remember-panel") ??
+				localStorage.getItem("bloom-notch-click-to-open")) !== "false"
+	);
+	const [notchDefaultPanel, setNotchDefaultPanel] = useState<NotchPanelChoice>(() =>
+		asPanelChoice(localStorage.getItem("bloom-notch-default-panel"))
+	);
 	const [musicCompactNotch, setMusicCompactNotch] = useState(true);
+	const [shelfPersist, setShelfPersist] = useState(
+		() => localStorage.getItem("bloom-shelf-persist") === "true"
+	);
 	const [volumeOverlayEnabled, setVolumeOverlayEnabled] = useState(true);
 	const [volumeEdgeEnabled, setVolumeEdgeEnabled] = useState(
 		() => localStorage.getItem("bloom-volume-edge-enabled") !== "false"
@@ -45,6 +97,9 @@ export function useSettings() {
 	);
 	const [cornersEnabled, setCornersEnabled] = useState(
 		() => localStorage.getItem("bloom-corners-enabled") === "true"
+	);
+	const [edgeShineEnabled, setEdgeShineEnabled] = useState(
+		() => localStorage.getItem("bloom-edge-shine-enabled") !== "false"
 	);
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
 		() => localStorage.getItem("bloom-show-update-indicator") !== "false"
@@ -67,6 +122,12 @@ export function useSettings() {
 	const [dockIconOnly, setDockIconOnly] = useState(
 		() => localStorage.getItem("bloom-dock-icon-only") === "true"
 	);
+	const [dockShowBackgroundApps, setDockShowBackgroundApps] = useState(
+		() => localStorage.getItem("bloom-dock-show-background-apps") !== "false"
+	);
+	const [dockSeparatorEnabled, setDockSeparatorEnabled] = useState(
+		() => localStorage.getItem("bloom-dock-separator-enabled") !== "false"
+	);
 	const [startIcon, setStartIcon] = useState(
 		() => localStorage.getItem("bloom-start-icon") || "default"
 	);
@@ -76,11 +137,37 @@ export function useSettings() {
 	const [dockWinNumberEnabled, setDockWinNumberEnabled] = useState(
 		() => localStorage.getItem("bloom-dock-win-number-enabled") !== "false"
 	);
+	const [dockExtrasPosition, setDockExtrasPosition] = useState(
+		() => localStorage.getItem("bloom-dock-extras-position") || "off"
+	);
+	const [dockExtrasDrives, setDockExtrasDrives] = useState(
+		() => localStorage.getItem("bloom-dock-extras-drives") !== "false"
+	);
+	const [dockExtrasHiddenDrives, setDockExtrasHiddenDrives] = useState(
+		() => localStorage.getItem("bloom-dock-extras-hidden-drives") || ""
+	);
+	const [dockExtrasRecycleBin, setDockExtrasRecycleBin] = useState(
+		() => localStorage.getItem("bloom-dock-extras-recycle-bin") !== "false"
+	);
+	// Off unless turned on, so existing docks don't change.
+	const [dockTaskView, setDockTaskView] = useState(
+		() => localStorage.getItem("bloom-dock-task-view") === "true"
+	);
+	const [dockExtrasFolders, setDockExtrasFolders] = useState(
+		() => localStorage.getItem("bloom-dock-extras-folders") ?? DEFAULT_ENABLED_FOLDERS
+	);
+	const [dockExtrasCustomFolders, setDockExtrasCustomFolders] = useState(
+		() => localStorage.getItem("bloom-dock-extras-custom-folders") || "[]"
+	);
 	const [dockMode, setDockMode] = useState(() => {
 		// "smart" is the fresh-install default — keep in step with App.tsx,
 		// Dock.tsx, and the backend fallback in commands.rs.
 		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
 		return raw === "auto-hide" ? "smart" : raw;
+	});
+	const [dockEdgeDelay, setDockEdgeDelay] = useState(() => {
+		const val = localStorage.getItem("bloom-dock-edge-delay");
+		return val !== null ? parseInt(val) : 200;
 	});
 	const [notchMode, setNotchMode] = useState("fixed");
 	const [notchEdgeDelay, setNotchEdgeDelay] = useState(() => {
@@ -123,8 +210,8 @@ export function useSettings() {
 	const [importStatus, setImportStatus] = useState<"idle" | "importing" | "success" | "error">(
 		"idle"
 	);
-	const [language, setLanguage] = useState<LanguageSetting>(
-		() => (localStorage.getItem("bloom-language") as LanguageSetting) || "system"
+	const [language, setLanguage] = useState<LanguageSetting>(() =>
+		normalizeLanguageSetting(localStorage.getItem("bloom-language"))
 	);
 
 	// ── Load all settings from backend + localStorage ──
@@ -148,14 +235,25 @@ export function useSettings() {
 
 			apply(getVal("bloom-weather-enabled"), setWeatherEnabled, readBool);
 			apply(getVal("bloom-calendar-enabled"), setCalendarEnabled, readBool);
+			apply(getVal("bloom-calendar-monday-first"), setCalendarMondayFirst, readBool);
+			apply(getVal("bloom-notch-command-center-enabled"), setControlsPanelEnabled, readBool);
+			apply(getVal("bloom-notch-devices-enabled"), setDevicesPanelEnabled, readBool);
 			apply(getVal("bloom-timer-sound-enabled"), setTimerSoundEnabled, readBool);
 			apply(getVal("bloom-music-mode-enabled"), setMusicModeEnabled, readBool);
+			apply(
+				getVal("bloom-notch-remember-panel") ?? getVal("bloom-notch-click-to-open"),
+				setNotchRememberPanel,
+				readBool
+			);
+			apply(getVal("bloom-notch-default-panel"), setNotchDefaultPanel, asPanelChoice);
 			apply(getVal("bloom-music-compact-notch"), setMusicCompactNotch, readBool);
+			apply(getVal("bloom-shelf-persist"), setShelfPersist, readBool);
 			apply(getVal("bloom-volume-overlay-enabled"), setVolumeOverlayEnabled, readBool);
 			apply(getVal("bloom-brightness-overlay-enabled"), setBrightnessOverlayEnabled, readBool);
 			apply(getVal("bloom-media-ambience-enabled"), setMediaAmbienceEnabled, readBool);
 			apply(getVal("bloom-media-compact-glow-enabled"), setMediaCompactGlowEnabled, readBool);
 			apply(getVal("bloom-corners-enabled"), setCornersEnabled, readBool);
+			setEdgeShineEnabled(getVal("bloom-edge-shine-enabled") !== "false");
 			apply(getVal("bloom-time-format-24h"), setTimeFormat24h, readBool);
 			apply(getVal("bloom-show-update-indicator"), setShowUpdateIndicator, readBool);
 			apply(getVal("bloom-auto-update"), setAutoUpdate, readBool);
@@ -163,10 +261,19 @@ export function useSettings() {
 			apply(getVal("bloom-brightness-edge-enabled"), setBrightnessEdgeEnabled, readBool);
 			apply(getVal("bloom-dock-enabled"), setDockEnabled, readBool);
 			apply(getVal("bloom-dock-preview-enabled"), setDockPreviewEnabled, readBool);
+			setDockShowBackgroundApps(getVal("bloom-dock-show-background-apps") !== "false");
 			apply(getVal("bloom-dock-icon-only"), setDockIconOnly, readBool);
+			apply(getVal("bloom-dock-separator-enabled"), setDockSeparatorEnabled, readBool);
 			apply(getVal("bloom-start-icon"), setStartIcon, (v) => v);
 			apply(getVal("bloom-dock-adaptive"), setDockAdaptive, readBool);
 			apply(getVal("bloom-dock-win-number-enabled"), setDockWinNumberEnabled, readBool);
+			apply(getVal("bloom-dock-extras-position"), setDockExtrasPosition, (v) => v);
+			apply(getVal("bloom-dock-extras-drives"), setDockExtrasDrives, readBool);
+			apply(getVal("bloom-dock-extras-recycle-bin"), setDockExtrasRecycleBin, readBool);
+			apply(getVal("bloom-dock-task-view"), setDockTaskView, readBool);
+			apply(getVal("bloom-dock-extras-hidden-drives"), setDockExtrasHiddenDrives, (v) => v);
+			apply(getVal("bloom-dock-extras-folders"), setDockExtrasFolders, (v) => v);
+			apply(getVal("bloom-dock-extras-custom-folders"), setDockExtrasCustomFolders, (v) => v);
 
 			apply(getVal("bloom-temp-unit"), setTempUnitFahrenheit, (v) => v === "fahrenheit");
 			apply(getVal("bloom-scale"), setScale, parseFloat);
@@ -175,15 +282,14 @@ export function useSettings() {
 			apply(getVal("bloom-notch-mode"), setNotchMode, (v) => (v === "auto-hide" ? "smart" : v));
 			apply(getVal("bloom-notch-edge-delay"), setNotchEdgeDelay, parseInt);
 			apply(getVal("bloom-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
+			apply(getVal("bloom-dock-edge-delay"), setDockEdgeDelay, parseInt);
 
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
 
-			const savedLanguage = getVal("bloom-language");
-			if (savedLanguage) {
-				setLanguage(savedLanguage as LanguageSetting);
-				setLocale(resolveLanguage(savedLanguage));
-			}
+			const savedLanguage = normalizeLanguageSetting(getVal("bloom-language"));
+			setLanguage(savedLanguage);
+			setLocale(resolveLanguage(savedLanguage));
 
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
@@ -203,7 +309,86 @@ export function useSettings() {
 		} catch (e) {
 			console.error("Failed to load settings:", e);
 		}
+		// Also reveal the controls on failure, so a load error cannot trap the
+		// user behind the opening indicator. A stale-mirror reload returns above.
+		setIsLoaded(true);
 	}, []);
+
+	// The file write is authoritative. Serialize controls that change several
+	// settings, and update the local mirror only after the backend confirms the
+	// write. A failed save reloads the page from persisted values and leaves a
+	// visible error instead of keeping an optimistic control value on screen.
+	const saveSetting = (key: string, value: string | null): Promise<boolean> => {
+		const operation = saveQueue.current.then(async () => {
+			if (saveFailed.current) return false;
+			try {
+				await invoke<void>("save_setting", { key, value });
+			} catch (error) {
+				console.error(`Failed to save ${key}:`, error);
+				saveFailed.current = true;
+				sessionStorage.setItem("bloom-settings-save-error", "true");
+				sessionStorage.setItem("bloom-settings-save-error-detail", String(error));
+				setSaveErrorDetail(String(error));
+				setSaveError(true);
+				window.setTimeout(() => window.location.reload(), 0);
+				return false;
+			}
+			try {
+				if (value === null) localStorage.removeItem(key);
+				else localStorage.setItem(key, value);
+				sessionStorage.removeItem("bloom-settings-save-error");
+				sessionStorage.removeItem("bloom-settings-save-error-detail");
+			} catch (error) {
+				// The file is saved; a mirror failure must not be reported as a failed write.
+				console.warn("Settings mirror update failed:", error);
+			}
+			setSaveError(false);
+			return true;
+		});
+		saveQueue.current = operation.then(() => {});
+		return operation;
+	};
+
+	// Coordinates only need the backend settings file. Keep them out of the
+	// browser's localStorage mirror while preserving the same queued/error path.
+	const saveLocation = (
+		key: "bloom-weather-lat" | "bloom-weather-lon",
+		value: string | null
+	): Promise<boolean> => {
+		const operation = saveQueue.current.then(async () => {
+			if (saveFailed.current) return false;
+			try {
+				await invoke<void>("save_setting", { key, value });
+			} catch (error) {
+				console.error(`Failed to save ${key}:`, error);
+				saveFailed.current = true;
+				sessionStorage.setItem("bloom-settings-save-error", "true");
+				sessionStorage.setItem("bloom-settings-save-error-detail", String(error));
+				setSaveErrorDetail(String(error));
+				setSaveError(true);
+				window.setTimeout(() => window.location.reload(), 0);
+				return false;
+			}
+			try {
+				localStorage.removeItem(key);
+				sessionStorage.removeItem("bloom-settings-save-error");
+				sessionStorage.removeItem("bloom-settings-save-error-detail");
+			} catch (error) {
+				console.warn("Settings mirror cleanup failed:", error);
+			}
+			setSaveError(false);
+			return true;
+		});
+		saveQueue.current = operation.then(() => {});
+		return operation;
+	};
+
+	const dismissSaveError = () => {
+		sessionStorage.removeItem("bloom-settings-save-error");
+		sessionStorage.removeItem("bloom-settings-save-error-detail");
+		setSaveErrorDetail("");
+		setSaveError(false);
+	};
 
 	// ── Initialize on mount ──
 	useEffect(() => {
@@ -223,23 +408,39 @@ export function useSettings() {
 	// ── Sync settings from other windows ──
 	useSettingsSync({
 		"bloom-dock-mode": setDockMode,
+		"bloom-dock-edge-delay": setDockEdgeDelay,
 		"bloom-notch-mode": setNotchMode,
 		"bloom-notch-edge-delay": setNotchEdgeDelay,
 		"bloom-dock-enabled": setDockEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
+		"bloom-dock-separator-enabled": setDockSeparatorEnabled,
 		"bloom-start-icon": setStartIcon,
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
+		"bloom-dock-show-background-apps": { set: setDockShowBackgroundApps, defaultValue: true },
 		"bloom-dock-adaptive": setDockAdaptive,
 		"bloom-dock-win-number-enabled": setDockWinNumberEnabled,
+		"bloom-dock-extras-position": setDockExtrasPosition,
+		"bloom-dock-extras-drives": setDockExtrasDrives,
+		"bloom-dock-extras-recycle-bin": setDockExtrasRecycleBin,
+		"bloom-dock-task-view": setDockTaskView,
+		"bloom-dock-extras-hidden-drives": setDockExtrasHiddenDrives,
+		"bloom-dock-extras-folders": setDockExtrasFolders,
+		"bloom-dock-extras-custom-folders": setDockExtrasCustomFolders,
 		"bloom-weather-enabled": setWeatherEnabled,
 		"bloom-calendar-enabled": setCalendarEnabled,
+		"bloom-calendar-monday-first": setCalendarMondayFirst,
+		"bloom-notch-command-center-enabled": setControlsPanelEnabled,
+		"bloom-notch-devices-enabled": setDevicesPanelEnabled,
 		"bloom-timer-sound-enabled": setTimerSoundEnabled,
 		"bloom-music-mode-enabled": setMusicModeEnabled,
+		"bloom-notch-remember-panel": setNotchRememberPanel,
+		"bloom-notch-default-panel": (v: unknown) => setNotchDefaultPanel(asPanelChoice(v)),
 		"bloom-music-compact-notch": setMusicCompactNotch,
 		"bloom-media-ambience-enabled": setMediaAmbienceEnabled,
 		"bloom-media-compact-glow-enabled": setMediaCompactGlowEnabled,
 		"bloom-media-layout": setMediaLayout,
 		"bloom-corners-enabled": setCornersEnabled,
+		"bloom-edge-shine-enabled": setEdgeShineEnabled,
 		"bloom-show-update-indicator": setShowUpdateIndicator,
 		"bloom-time-format-24h": setTimeFormat24h,
 		"bloom-low-battery-threshold": setLowBatteryThreshold,
@@ -256,10 +457,13 @@ export function useSettings() {
 		"bloom-theme-saturation": setThemeSaturation,
 		"bloom-theme-brightness": setThemeBrightness,
 		"bloom-weather-city": (v) => setCityName(v || ""),
-		"bloom-language": (v) => {
-			const next = String(v) as LanguageSetting;
-			setLanguage(next);
-			setLocale(resolveLanguage(next));
+		"bloom-language": {
+			set: (v) => {
+				const next = normalizeLanguageSetting(v);
+				setLanguage(next);
+				setLocale(resolveLanguage(next));
+			},
+			defaultValue: "system"
 		}
 	});
 
@@ -391,10 +595,35 @@ export function useSettings() {
 		saveSetting("bloom-weather-enabled", String(next));
 	};
 
+	// The notch needs at least one panel, so the last one on can't be turned off.
+	const enabledPanelCount =
+		Number(calendarEnabled) + Number(controlsPanelEnabled) + Number(devicesPanelEnabled);
+
+	const toggleCalendarMondayFirst = () => {
+		const next = !calendarMondayFirst;
+		setCalendarMondayFirst(next);
+		saveSetting("bloom-calendar-monday-first", String(next));
+	};
+
 	const toggleCalendar = () => {
 		const next = !calendarEnabled;
+		if (!next && enabledPanelCount <= 1) return;
 		setCalendarEnabled(next);
 		saveSetting("bloom-calendar-enabled", String(next));
+	};
+
+	const toggleControlsPanel = () => {
+		const next = !controlsPanelEnabled;
+		if (!next && enabledPanelCount <= 1) return;
+		setControlsPanelEnabled(next);
+		saveSetting("bloom-notch-command-center-enabled", String(next));
+	};
+
+	const toggleDevicesPanel = () => {
+		const next = !devicesPanelEnabled;
+		if (!next && enabledPanelCount <= 1) return;
+		setDevicesPanelEnabled(next);
+		saveSetting("bloom-notch-devices-enabled", String(next));
 	};
 
 	const toggleTimerSound = () => {
@@ -409,10 +638,27 @@ export function useSettings() {
 		saveSetting("bloom-music-mode-enabled", String(next));
 	};
 
+	const toggleNotchRememberPanel = () => {
+		const next = !notchRememberPanel;
+		setNotchRememberPanel(next);
+		saveSetting("bloom-notch-remember-panel", String(next));
+	};
+
+	const changeNotchDefaultPanel = (panel: NotchPanelChoice) => {
+		setNotchDefaultPanel(panel);
+		saveSetting("bloom-notch-default-panel", panel);
+	};
+
 	const toggleMusicCompactNotch = () => {
 		const next = !musicCompactNotch;
 		setMusicCompactNotch(next);
 		saveSetting("bloom-music-compact-notch", String(next));
+	};
+
+	const toggleShelfPersist = () => {
+		const next = !shelfPersist;
+		setShelfPersist(next);
+		saveSetting("bloom-shelf-persist", String(next));
 	};
 
 	const toggleMediaLayout = (layout: "classic" | "compact") => {
@@ -456,6 +702,11 @@ export function useSettings() {
 		saveSetting("bloom-media-compact-glow-enabled", String(next));
 	};
 
+	const toggleEdgeShine = () => {
+		const next = !edgeShineEnabled;
+		setEdgeShineEnabled(next);
+		saveSetting("bloom-edge-shine-enabled", String(next));
+	};
 	const toggleCorners = () => {
 		const next = !cornersEnabled;
 		setCornersEnabled(next);
@@ -492,10 +743,22 @@ export function useSettings() {
 		saveSetting("bloom-dock-preview-enabled", String(next));
 	};
 
+	const toggleDockShowBackgroundApps = () => {
+		const next = !dockShowBackgroundApps;
+		setDockShowBackgroundApps(next);
+		saveSetting("bloom-dock-show-background-apps", String(next));
+	};
+
 	const toggleDockIconOnly = () => {
 		const next = !dockIconOnly;
 		setDockIconOnly(next);
 		saveSetting("bloom-dock-icon-only", String(next));
+	};
+
+	const toggleDockSeparator = () => {
+		const next = !dockSeparatorEnabled;
+		setDockSeparatorEnabled(next);
+		saveSetting("bloom-dock-separator-enabled", String(next));
 	};
 
 	const handleStartIconChange = (icon: string) => {
@@ -515,6 +778,65 @@ export function useSettings() {
 		saveSetting("bloom-dock-win-number-enabled", String(next));
 	};
 
+	const handleDockExtrasPositionChange = (position: string) => {
+		setDockExtrasPosition(position);
+		saveSetting("bloom-dock-extras-position", position);
+	};
+
+	const toggleDockExtrasDrives = () => {
+		const next = !dockExtrasDrives;
+		setDockExtrasDrives(next);
+		saveSetting("bloom-dock-extras-drives", String(next));
+	};
+
+	const toggleDockExtrasDrive = (letter: string) => {
+		const next = toggleHiddenDrive(dockExtrasHiddenDrives, letter);
+		setDockExtrasHiddenDrives(next);
+		saveSetting("bloom-dock-extras-hidden-drives", next);
+	};
+
+	const toggleDockExtrasRecycleBin = () => {
+		const next = !dockExtrasRecycleBin;
+		setDockExtrasRecycleBin(next);
+		saveSetting("bloom-dock-extras-recycle-bin", String(next));
+	};
+
+	const toggleDockTaskView = () => {
+		const next = !dockTaskView;
+		setDockTaskView(next);
+		saveSetting("bloom-dock-task-view", String(next));
+	};
+
+	const toggleDockExtraFolder = (id: string) => {
+		const next = toggleEnabledFolder(dockExtrasFolders, id);
+		setDockExtrasFolders(next);
+		saveSetting("bloom-dock-extras-folders", next);
+	};
+
+	const handleAddDockExtraFolder = async () => {
+		try {
+			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+			const selected = await openDialog({
+				title: t("ui.useSettings.addAFolderToTheDock"),
+				directory: true,
+				multiple: false
+			});
+			if (typeof selected === "string") {
+				const next = addCustomFolder(dockExtrasCustomFolders, selected);
+				setDockExtrasCustomFolders(next);
+				saveSetting("bloom-dock-extras-custom-folders", next);
+			}
+		} catch (e) {
+			console.error("Folder picker failed:", e);
+		}
+	};
+
+	const handleRemoveDockExtraFolder = (path: string) => {
+		const next = removeCustomFolder(dockExtrasCustomFolders, path);
+		setDockExtrasCustomFolders(next);
+		saveSetting("bloom-dock-extras-custom-folders", next);
+	};
+
 	const toggleAutoUpdate = () => {
 		const next = !autoUpdate;
 		setAutoUpdate(next);
@@ -522,7 +844,7 @@ export function useSettings() {
 	};
 
 	const handleLanguageChange = (code: string) => {
-		const next = code as LanguageSetting;
+		const next = normalizeLanguageSetting(code);
 		setLanguage(next);
 		setLocale(resolveLanguage(next));
 		saveSetting("bloom-language", next);
@@ -537,6 +859,11 @@ export function useSettings() {
 	const setNotchModeValue = (newMode: string) => {
 		setNotchMode(newMode);
 		saveSetting("bloom-notch-mode", newMode);
+	};
+
+	const handleDockEdgeDelayChange = (val: number) => {
+		setDockEdgeDelay(val);
+		saveSetting("bloom-dock-edge-delay", val.toString());
 	};
 
 	const handleNotchEdgeDelayChange = (val: number) => {
@@ -618,32 +945,22 @@ export function useSettings() {
 		setCityName(city.name);
 		setShowCityDropdown(false);
 		setCitySearchResults([]);
-		localStorage.setItem("bloom-weather-city", city.name);
-		localStorage.setItem("bloom-weather-lat", city.latitude.toString());
-		localStorage.setItem("bloom-weather-lon", city.longitude.toString());
-		await invoke("save_setting", {
-			key: "bloom-weather-lat",
-			value: city.latitude.toString()
-		}).catch(() => {});
-		await invoke("save_setting", {
-			key: "bloom-weather-lon",
-			value: city.longitude.toString()
-		}).catch(() => {});
-		await invoke("save_setting", { key: "bloom-weather-city", value: city.name }).catch(() => {});
-		emit("weather-refresh", { lat: city.latitude, lon: city.longitude });
+		const saved =
+			(await saveLocation("bloom-weather-lat", city.latitude.toString())) &&
+			(await saveLocation("bloom-weather-lon", city.longitude.toString())) &&
+			(await saveSetting("bloom-weather-city", city.name));
+		if (saved) emit("weather-refresh", { lat: city.latitude, lon: city.longitude });
 	};
 
 	const handleCityClear = async () => {
 		setCityName("");
 		setShowCityDropdown(false);
 		setCitySearchResults([]);
-		localStorage.removeItem("bloom-weather-city");
-		localStorage.removeItem("bloom-weather-lat");
-		localStorage.removeItem("bloom-weather-lon");
-		await invoke("save_setting", { key: "bloom-weather-lat", value: null }).catch(() => {});
-		await invoke("save_setting", { key: "bloom-weather-lon", value: null }).catch(() => {});
-		await invoke("save_setting", { key: "bloom-weather-city", value: null }).catch(() => {});
-		emit("weather-refresh", true);
+		const saved =
+			(await saveLocation("bloom-weather-lat", null)) &&
+			(await saveLocation("bloom-weather-lon", null)) &&
+			(await saveSetting("bloom-weather-city", null));
+		if (saved) emit("weather-refresh", true);
 	};
 
 	// ── Reset to defaults ──
@@ -677,18 +994,13 @@ export function useSettings() {
 	};
 
 	// ── Export / Import ──
+	// The backend opens the native dialog and owns the file path, so these
+	// cannot be used to read or write arbitrary files from a webview.
 	const handleExportSettings = async () => {
 		setExportStatus("exporting");
 		try {
-			const { save: saveDialog } = await import("@tauri-apps/plugin-dialog");
-			const settingsJson = await invoke<string>("export_settings");
-			const filePath = await saveDialog({
-				title: t("settings.dialogs.exportTitle"),
-				defaultPath: "bloom-settings.json",
-				filters: [{ name: "JSON", extensions: ["json"] }]
-			});
+			const filePath = await invoke<string | null>("export_settings_to_file");
 			if (filePath) {
-				await invoke("write_settings_to_path", { path: filePath, content: settingsJson });
 				setExportStatus("success");
 				setTimeout(() => setExportStatus("idle"), 2000);
 			} else {
@@ -704,17 +1016,8 @@ export function useSettings() {
 	const handleImportSettings = async () => {
 		setImportStatus("importing");
 		try {
-			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
-			const filePath = await openDialog({
-				title: t("settings.dialogs.importTitle"),
-				filters: [{ name: "JSON", extensions: ["json"] }],
-				multiple: false
-			});
+			const filePath = await invoke<string | null>("import_settings_from_file");
 			if (filePath) {
-				const content = await invoke<string>("read_settings_from_path", {
-					path: filePath as string
-				});
-				await invoke("import_settings", { settings: content });
 				await loadAllSettings();
 				setImportStatus("success");
 				setTimeout(() => setImportStatus("idle"), 2000);
@@ -729,6 +1032,11 @@ export function useSettings() {
 	};
 
 	return {
+		isLoaded,
+		flushPendingSaves,
+		saveError,
+		saveErrorDetail,
+		dismissSaveError,
 		// System
 		autostart,
 		toggleAutostart,
@@ -746,6 +1054,8 @@ export function useSettings() {
 		handleScaleChange,
 		cornersEnabled,
 		toggleCorners,
+		edgeShineEnabled,
+		toggleEdgeShine,
 
 		// Theme
 		themeMode,
@@ -764,14 +1074,27 @@ export function useSettings() {
 		setNotchModeValue,
 		notchEdgeDelay,
 		handleNotchEdgeDelayChange,
+		calendarMondayFirst,
+		toggleCalendarMondayFirst,
 		calendarEnabled,
 		toggleCalendar,
+		controlsPanelEnabled,
+		toggleControlsPanel,
+		devicesPanelEnabled,
+		toggleDevicesPanel,
+		enabledPanelCount,
 		timerSoundEnabled,
 		toggleTimerSound,
 		musicModeEnabled,
 		toggleMusicMode,
+		notchRememberPanel,
+		toggleNotchRememberPanel,
+		notchDefaultPanel,
+		changeNotchDefaultPanel,
 		musicCompactNotch,
 		toggleMusicCompactNotch,
+		shelfPersist,
+		toggleShelfPersist,
 		mediaLayout,
 		toggleMediaLayout,
 		mediaAmbienceEnabled,
@@ -801,16 +1124,37 @@ export function useSettings() {
 		toggleDock,
 		dockMode,
 		setDockModeValue,
+		dockEdgeDelay,
+		handleDockEdgeDelayChange,
 		dockPreviewEnabled,
 		toggleDockPreview,
+		dockShowBackgroundApps,
+		toggleDockShowBackgroundApps,
 		dockIconOnly,
 		toggleDockIconOnly,
+		dockSeparatorEnabled,
+		toggleDockSeparator,
 		startIcon,
 		handleStartIconChange,
 		dockAdaptive,
 		toggleDockAdaptive,
 		dockWinNumberEnabled,
 		toggleDockWinNumber,
+		dockExtrasPosition,
+		handleDockExtrasPositionChange,
+		dockExtrasDrives,
+		toggleDockExtrasDrives,
+		dockExtrasHiddenDrives,
+		toggleDockExtrasDrive,
+		dockExtrasRecycleBin,
+		toggleDockExtrasRecycleBin,
+		dockTaskView,
+		toggleDockTaskView,
+		dockExtrasFolders,
+		toggleDockExtraFolder,
+		dockExtrasCustomFolders,
+		handleAddDockExtraFolder,
+		handleRemoveDockExtraFolder,
 
 		// Overlays
 		volumeOverlayEnabled,

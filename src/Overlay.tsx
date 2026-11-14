@@ -1,4 +1,12 @@
-import { StrictMode, useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import {
+	StrictMode,
+	useState,
+	useEffect,
+	useRef,
+	useCallback,
+	useLayoutEffect,
+	useMemo
+} from "react";
 import { createRoot } from "react-dom/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -7,11 +15,14 @@ import { useSettingsSync } from "./hooks/useSettingsSync";
 import { useTrailingThrottle } from "./hooks/useTrailingThrottle";
 import { getVersion } from "@tauri-apps/api/app";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
-import { initI18n, resolveLanguage, setLocale, useTranslation } from "./i18n";
+import { t, initI18n, resolveLanguage, setLocale, useTranslation } from "./i18n";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
+import { EdgeSurface } from "./components/EdgeSurface";
 import { initTheme } from "./theme";
+import { Onboarding } from "./components/Onboarding";
+import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
 // ─── App Volume Mixer ───────────────────────────────────────────────────────
 
@@ -21,6 +32,35 @@ interface AudioSession {
 	process_path: string | null;
 	volume: number;
 	is_muted: boolean;
+}
+
+// Sliders can unmount or lose focus while a drag is in progress. Always drop
+// their document listeners so an old slider cannot keep sending changes.
+function useMouseSliderDrag(onMove: (clientY: number) => void, onEnd?: () => void) {
+	const moveRef = useRef(onMove);
+	const endRef = useRef(onEnd);
+	const cleanupRef = useRef<(() => void) | null>(null);
+	moveRef.current = onMove;
+	endRef.current = onEnd;
+
+	useEffect(() => () => cleanupRef.current?.(), []);
+
+	return (clientY: number) => {
+		cleanupRef.current?.();
+		moveRef.current(clientY);
+		const handleMove = (event: MouseEvent) => moveRef.current(event.clientY);
+		const cleanup = () => {
+			document.removeEventListener("mousemove", handleMove);
+			document.removeEventListener("mouseup", cleanup);
+			window.removeEventListener("blur", cleanup);
+			cleanupRef.current = null;
+			endRef.current?.();
+		};
+		cleanupRef.current = cleanup;
+		document.addEventListener("mousemove", handleMove);
+		document.addEventListener("mouseup", cleanup);
+		window.addEventListener("blur", cleanup);
+	};
 }
 
 function MixerTile({
@@ -34,7 +74,7 @@ function MixerTile({
 	onMuteToggle: (pid: number) => void;
 	draggingRef: { current: number | null };
 }) {
-	const { t } = useTranslation();
+	useTranslation();
 	const [icon, setIcon] = useState<string | null>(null);
 	const [showPercentage, setShowPercentage] = useState(false);
 	const barRef = useRef<HTMLDivElement>(null);
@@ -80,18 +120,13 @@ function MixerTile({
 		const relativeY = rect.bottom - clientY;
 		onVolumeChange(session.pid, Math.max(0, Math.min(1, relativeY / rect.height)));
 	};
+	const startDrag = useMouseSliderDrag(volumeFromY, () => {
+		draggingRef.current = null;
+	});
 
 	const handleMouseDown = (e: React.MouseEvent) => {
+		startDrag(e.clientY);
 		draggingRef.current = session.pid;
-		volumeFromY(e.clientY);
-		const handleMouseMove = (moveE: MouseEvent) => volumeFromY(moveE.clientY);
-		const handleMouseUp = () => {
-			draggingRef.current = null;
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
 	};
 
 	return (
@@ -141,6 +176,15 @@ const MIXER_COLUMN_GAP = 4;
 const MIXER_PANEL_PADDING = 8;
 const MIXER_MAX_COLUMNS = 4;
 const MIXER_EMPTY_COLUMNS = 2;
+// The widest the mixer panel gets, for the overlay's window region.
+const MIXER_MAX_PANEL_WIDTH =
+	MIXER_PANEL_PADDING * 2 +
+	MIXER_MAX_COLUMNS * MIXER_COLUMN_WIDTH +
+	(MIXER_MAX_COLUMNS - 1) * MIXER_COLUMN_GAP;
+// A HUD card's size in CSS px before `bloom-scale`; the backend's edge
+// hit-testing uses the same 42x196.
+const HUD_CARD_WIDTH = 42;
+const HUD_CARD_HEIGHT = 196;
 
 // Last fetched session list, so reopening the mixer renders at the right width
 // immediately instead of growing out of the empty-state width.
@@ -159,7 +203,7 @@ function VolumeNotch({
 	mixerExpanded: boolean;
 	onMixerExpandedChange: (expanded: boolean) => void;
 }) {
-	const { t } = useTranslation();
+	useTranslation();
 	const percentage = Math.round(volume * 100);
 	const barRef = useRef<HTMLDivElement>(null);
 	const shellRef = useRef<HTMLDivElement>(null);
@@ -327,21 +371,15 @@ function VolumeNotch({
 		onVolumeChange(newVolume);
 	};
 
+	const startDrag = useMouseSliderDrag((clientY) => {
+		if (!barRef.current) return;
+		const rect = barRef.current.getBoundingClientRect();
+		const relativeY = rect.bottom - clientY;
+		const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
+		onVolumeChange(newVolume);
+	});
 	const handleMouseDown = (e: React.MouseEvent) => {
-		handleBarInteraction(e);
-		const handleMouseMove = (moveE: MouseEvent) => {
-			if (!barRef.current) return;
-			const rect = barRef.current.getBoundingClientRect();
-			const relativeY = rect.bottom - moveE.clientY;
-			const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
-			onVolumeChange(newVolume);
-		};
-		const handleMouseUp = () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
+		startDrag(e.clientY);
 	};
 
 	return (
@@ -372,7 +410,7 @@ function VolumeNotch({
 			}
 			transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.7 }}
 		>
-			<div className="volume-notch-flares" />
+			<EdgeSurface edge="left" />
 			<motion.div
 				ref={shellRef}
 				className="volume-notch"
@@ -507,21 +545,15 @@ function BrightnessNotch({
 		onBrightnessChange(newBrightness);
 	};
 
+	const startDrag = useMouseSliderDrag((clientY) => {
+		if (!barRef.current) return;
+		const rect = barRef.current.getBoundingClientRect();
+		const relativeY = rect.bottom - clientY;
+		const newBrightness = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
+		onBrightnessChange(newBrightness);
+	});
 	const handleMouseDown = (e: React.MouseEvent) => {
-		handleBarInteraction(e);
-		const handleMouseMove = (moveE: MouseEvent) => {
-			if (!barRef.current) return;
-			const rect = barRef.current.getBoundingClientRect();
-			const relativeY = rect.bottom - moveE.clientY;
-			const newBrightness = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
-			onBrightnessChange(newBrightness);
-		};
-		const handleMouseUp = () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
+		startDrag(e.clientY);
 	};
 
 	return (
@@ -541,6 +573,7 @@ function BrightnessNotch({
 			transition={{ type: "spring", stiffness: 450, damping: 25, mass: 0.7 }}
 		>
 			<div className="brightness-notch">
+				<EdgeSurface edge="right" />
 				<motion.div
 					className="brightness-notch-content-group"
 					initial={{ opacity: 0, x: 10 }}
@@ -574,13 +607,13 @@ function BrightnessNotch({
 // ─── Main Overlay Component ─────────────────────────────────────────────────
 
 function OverlayApp() {
-	const { t } = useTranslation();
+	useTranslation();
 
 	useEffect(() => {
 		return initTheme();
 	}, []);
 
-	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating";
+	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating" | "onboarding";
 	const [mode, setMode] = useState<Mode>("idle");
 	const [updateStatus, setUpdateStatus] = useState<string>("checking");
 	const [updateProgress, setUpdateProgress] = useState(0);
@@ -613,6 +646,47 @@ function OverlayApp() {
 	const hideWindowTimeoutRef = useRef<any>(null);
 	const splashActiveRef = useRef(false);
 	const mixerExpandedRef = useRef(false);
+	const onboardingActiveRef = useRef(false);
+	const onboardingPendingRef = useRef(false);
+	const splashCompletionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const beginOnboarding = useCallback(async () => {
+		if (onboardingActiveRef.current) return;
+		onboardingActiveRef.current = true;
+		splashActiveRef.current = true;
+		if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		if (hideWindowTimeoutRef.current) clearTimeout(hideWindowTimeoutRef.current);
+		setMode("onboarding");
+		try {
+			await invoke("set_onboarding_active", { active: true });
+		} catch (error) {
+			console.error("Could not open onboarding", error);
+			await invoke("set_onboarding_active", { active: false }).catch(console.error);
+			onboardingActiveRef.current = false;
+			splashActiveRef.current = false;
+			setMode("idle");
+		}
+	}, []);
+
+	const finishOnboarding = useCallback(async () => {
+		await invoke("complete_onboarding");
+		try {
+			await invoke("set_onboarding_active", { active: false }).catch(console.error);
+		} finally {
+			onboardingActiveRef.current = false;
+			splashActiveRef.current = false;
+			setMode("idle");
+		}
+	}, []);
+
+	useEffect(() => {
+		const unlisten = listen("open-onboarding", () => {
+			void beginOnboarding();
+		});
+		return () => {
+			void unlisten.then((stop) => stop());
+		};
+	}, [beginOnboarding]);
 
 	const resetHideTimeout = useCallback(() => {
 		// Keep the notch pinned while the mixer panel is open; it closes on
@@ -656,50 +730,56 @@ function OverlayApp() {
 
 	// ── Splash Detection ──
 	useEffect(() => {
+		let disposed = false;
+		let doneTimer: ReturnType<typeof setTimeout> | undefined;
 		const firstRun = localStorage.getItem("bloom-first-run") === null;
 		const storedVersion = localStorage.getItem("bloom-app-version");
-
-		const showSplash = (version?: string) => {
-			splashActiveRef.current = true;
-			setMode("splash");
-			invoke("set_splash_fullscreen", { fullscreen: true });
-			if (version) localStorage.setItem("bloom-app-version", version);
-			setTimeout(() => emit("splash-done"), 2800);
-		};
-
-		// First run or old version without version key — splash immediately
-		if (firstRun || storedVersion === null) {
-			showSplash();
-			// Still try to store the version in the background
-			getVersion()
-				.then((v) => localStorage.setItem("bloom-app-version", v))
-				.catch(() => {});
-			return;
-		}
-
-		// Has version key — check if it matches
-		getVersion()
-			.then((currentVersion) => {
-				if (storedVersion !== currentVersion) {
-					showSplash(currentVersion);
-				} else {
-					emit("splash-done");
+		void Promise.all([
+			invoke<boolean>("get_onboarding_completed").catch((error) => {
+				console.error("Could not read onboarding state", error);
+				return true;
+			}),
+			getVersion().catch(() => storedVersion)
+		]).then(([completed, currentVersion]) => {
+			if (disposed || onboardingActiveRef.current) return;
+			onboardingPendingRef.current = !completed;
+			if (firstRun || storedVersion === null || storedVersion !== currentVersion) {
+				splashActiveRef.current = true;
+				setMode("splash");
+				void invoke("set_splash_fullscreen", { fullscreen: true });
+				if (currentVersion) localStorage.setItem("bloom-app-version", currentVersion);
+				doneTimer = setTimeout(() => {
+					void emit("splash-done");
+				}, 2800);
+			} else {
+				void emit("splash-done");
+				if (!completed) {
+					onboardingPendingRef.current = false;
+					void beginOnboarding();
 				}
-			})
-			.catch(() => {
-				// Version check failed — let bloom start
-				emit("splash-done");
-			});
-	}, []);
+			}
+		});
+		return () => {
+			disposed = true;
+			if (doneTimer) clearTimeout(doneTimer);
+			if (splashCompletionTimer.current) clearTimeout(splashCompletionTimer.current);
+		};
+	}, [beginOnboarding]);
 
 	const onSplashComplete = useCallback(() => {
 		localStorage.setItem("bloom-first-run", "done");
-		setTimeout(() => {
+		splashCompletionTimer.current = setTimeout(() => {
 			splashActiveRef.current = false;
-			setMode("idle");
-			invoke("set_splash_fullscreen", { fullscreen: false });
+			void invoke("set_splash_fullscreen", { fullscreen: false })
+				.then(() => {
+					if (onboardingPendingRef.current) {
+						onboardingPendingRef.current = false;
+						void beginOnboarding();
+					} else setMode("idle");
+				})
+				.catch(console.error);
 		}, 300);
-	}, []);
+	}, [beginOnboarding]);
 
 	// ── Event Listeners ──
 	useEffect(() => {
@@ -753,6 +833,7 @@ function OverlayApp() {
 		const autoUpdatePromise = listen<{ status: string; progress?: number }>(
 			"auto-update-status",
 			(event) => {
+				if (onboardingActiveRef.current) return;
 				const { status, progress } = event.payload;
 				setUpdateStatus(status);
 				if (progress !== undefined) setUpdateProgress(progress);
@@ -791,7 +872,10 @@ function OverlayApp() {
 		"bloom-brightness-overlay-enabled": setBrightnessOverlayEnabled,
 		"bloom-brightness-edge-enabled": setBrightnessEdgeEnabled,
 		"bloom-scale": setScale,
-		"bloom-language": (value) => setLocale(resolveLanguage(String(value)))
+		"bloom-language": {
+			set: (value) => setLocale(resolveLanguage(String(value))),
+			defaultValue: "system"
+		}
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -883,7 +967,7 @@ function OverlayApp() {
 	}, []);
 
 	useEffect(() => {
-		if ((mode === "splash" || mode === "updating") && mixerExpanded) {
+		if ((mode === "splash" || mode === "updating" || mode === "onboarding") && mixerExpanded) {
 			collapseMixer();
 		}
 	}, [mode, mixerExpanded, collapseMixer]);
@@ -904,8 +988,54 @@ function OverlayApp() {
 
 	const isLeft = mode === "volume";
 
+	const sendOverlayRegion = useMemo(
+		() =>
+			createRegionSender((rects) => {
+				invoke("set_window_region", { rects }).catch(() => {});
+			}),
+		[]
+	);
+
+	// Clip the full-screen overlay to what it draws (see window_region.rs).
+	// The splashes cover the screen. Otherwise each HUD has a home zone at its
+	// edge, the full card size, so a card scaling in from the edge is never
+	// clipped; with the mixer open the left zone spans the widest mixer. The
+	// HUDs and the mixer panel are measured on top, padded for their shadows.
+	useEffect(() => {
+		const width = window.innerWidth;
+		const height = window.innerHeight;
+		if (mode === "onboarding") return; // Setup reports its own bounds as steps move.
+		if (mode === "splash" || mode === "updating") {
+			sendOverlayRegion([{ x: 0, y: 0, width, height }]);
+			return;
+		}
+		const pad = 24 * scale;
+		const cardWidth = HUD_CARD_WIDTH * scale;
+		const cardHeight = HUD_CARD_HEIGHT * scale;
+		const leftWidth =
+			(mixerExpanded ? HUD_CARD_WIDTH + MIXER_MAX_PANEL_WIDTH : HUD_CARD_WIDTH) * scale;
+		const zone = (x: number, w: number): RegionRect => ({
+			x,
+			y: (height - cardHeight) / 2 - pad,
+			width: w,
+			height: cardHeight + pad * 2
+		});
+		sendOverlayRegion([
+			zone(0, leftWidth + pad),
+			zone(width - cardWidth - pad, cardWidth + pad),
+			...measureElements([
+				[".volume-notch-wrapper", 24],
+				[".volume-mixer-panel", 24],
+				[".brightness-notch-wrapper", 24]
+			])
+		]);
+	});
+
 	return (
 		<div className="overlay-container">
+			{mode === "onboarding" && (
+				<Onboarding scale={scale} onClose={finishOnboarding} onRegionChange={sendOverlayRegion} />
+			)}
 			{/* Splash Screen */}
 			<AnimatePresence>
 				{mode === "splash" && (
@@ -963,7 +1093,7 @@ function OverlayApp() {
 			</AnimatePresence>
 
 			{/* Volume / Brightness Overlay */}
-			{mode !== "splash" && mode !== "updating" && (
+			{mode !== "splash" && mode !== "updating" && mode !== "onboarding" && (
 				<div
 					style={{
 						zoom: scale,

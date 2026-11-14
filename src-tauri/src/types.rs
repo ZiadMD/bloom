@@ -7,6 +7,14 @@ pub struct WmiMonitorBrightness {
     pub current_brightness: u8,
 }
 
+/// Raised by Windows whenever a display's brightness changes, by any means.
+#[derive(Deserialize, Debug)]
+#[serde(rename = "WmiMonitorBrightnessEvent")]
+#[serde(rename_all = "PascalCase")]
+pub struct WmiMonitorBrightnessEvent {
+    pub brightness: u8,
+}
+
 #[derive(Clone, Serialize)]
 pub struct AudioVisualizationData {
     pub frequencies: Vec<f32>,
@@ -30,17 +38,12 @@ pub struct MediaInfo {
 }
 
 pub enum SystemCommand {
-    VolumeMute,
-    VolumeUp,
-    VolumeDown,
     SetVolume(f32),
     MediaPlayPause,
     MediaNext,
     MediaPrevious,
     MediaSeek(i64),
     ToggleVisibility(bool),
-    BrightnessUp,
-    BrightnessDown,
 }
 
 #[derive(Clone, Copy, Deserialize, Debug)]
@@ -77,6 +80,8 @@ pub struct VolumeChangeEvent {
 pub struct WifiStatus {
     pub enabled: bool,
     pub connected: bool,
+    /// The connected network's name, for the controls tile.
+    pub ssid: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

@@ -162,9 +162,14 @@ You'll need [Rust](https://rustup.rs/) and [Bun](https://bun.sh/). That's it.
 
 Bloom is open source.
 Found a bug? Open an issue.
-Have an idea? Send a PR.
-Want to translate Bloom? See [Translations](CONTRIBUTING.md#translations) in the contributing guide.
+Have an idea? Open a feature request first — we'll agree on the approach before you write code. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Want to just say it's cool? A star goes a long way.
+
+## Keep it blooming
+
+Bloom runs on spring physics. I run on coffee.
+
+[Buy me a coffee ↗](https://buymeacoffee.com/sehaz)
 
 Licensed under [GPLv3](LICENSE).
 
@@ -175,3 +180,7 @@ Licensed under [GPLv3](LICENSE).
 **Your desktop is waiting.**
 
 </div>
+
+## Translations
+
+Help bring Bloom to your language—no coding needed. See [the translation guide](TRANSLATING.md). Partial translations are welcome; untranslated messages use English.

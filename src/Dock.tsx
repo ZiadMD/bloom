@@ -1,23 +1,26 @@
+import { t, tCount, useTranslation, resolveLanguage, setLocale } from "./i18n";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./Dock.css";
+import { EdgeSurface } from "./components/EdgeSurface";
 import { initTheme } from "./theme";
 import { useSettingsSync } from "./hooks/useSettingsSync";
+import { useOnboardingReveal } from "./hooks/useOnboardingReveal";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
-import { resolveLanguage, setLocale, useTranslation } from "./i18n";
+import { dockOverlapSpan } from "./dockGeometry";
 
-interface AppInfo {
-	name: string;
-	path: string;
-	icon: string | null;
-	is_running: boolean;
-	is_pinned?: boolean;
-	hwnd?: number;
-	executable?: string;
-	all_hwnds?: [number, string][];
-}
+import {
+	dockIconKey,
+	matchesPackagedExecutable,
+	mergeTrayApps,
+	selectDockTrayApps,
+	type AppInfo,
+	type TrayApp
+} from "./dockApps";
+import { driveLetter, hideDrive, removeCustomFolder, type DockExtra } from "./dockExtras";
+import { createRegionSender, measureElements, padRect, type RegionRect } from "./windowRegion";
 
 // Host processes (Edge/Chrome/Brave/ApplicationFrameHost) run every PWA/UWP
 // window, so their window title must be part of their identity — otherwise two
@@ -43,12 +46,36 @@ export function appIdentity(p: string, executable?: string, name?: string) {
 
 const itemKey = (app: AppInfo) => appIdentity(app.path, app.executable, app.name);
 
+// WinEvent notifications can arrive for windows that do not change the dock.
+// Keep the existing array when its visible content is identical so Framer
+// Motion does not restart dock layout work on every notification.
+function sameRunningApps(left: AppInfo[], right: AppInfo[]): boolean {
+	return (
+		left.length === right.length &&
+		left.every((app, index) => {
+			const next = right[index];
+			return (
+				app.name === next.name &&
+				app.path === next.path &&
+				app.icon === next.icon &&
+				app.is_running === next.is_running &&
+				app.is_background === next.is_background &&
+				app.hwnd === next.hwnd &&
+				app.executable === next.executable &&
+				(app.tray_ids?.join("\0") ?? "") === (next.tray_ids?.join("\0") ?? "") &&
+				JSON.stringify(app.all_hwnds ?? []) === JSON.stringify(next.all_hwnds ?? [])
+			);
+		})
+	);
+}
+
 // Fuzzy identity: a running window and its installed/pinned entry often carry
 // different paths (exe vs .lnk vs AUMID), so exact keys miss and the same app
 // looks pinnable twice. Mirrors the dock list's own pinned↔running matching.
 export function isSameApp(a: AppInfo, b: AppInfo): boolean {
 	if (!a.path || !b.path) return false;
 	if (itemKey(a) === itemKey(b)) return true;
+	if (matchesPackagedExecutable(a, b)) return true;
 	// Browser hosts run many apps under one exe — only the full identity
 	// (which folds in the window/AUMID name) can match those.
 	if (isBrowserHost(a.path) || isBrowserHost(b.path)) return false;
@@ -90,11 +117,21 @@ const isIdentifier = (p: string) => !p.includes("/") && !p.includes("\\");
 
 // Resolve the configured start-button icon to a public asset, or to the data
 // URI of a user-uploaded icon (stored with a "custom:" prefix).
+// Task View's glyph: a window in front of another, as on the taskbar.
+function TaskViewIcon() {
+	return (
+		<svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round">
+			<rect x="3.5" y="7.5" width="13" height="13" rx="3" />
+			<path d="M8 3.5h9.5a3 3 0 0 1 3 3V16" />
+		</svg>
+	);
+}
+
 function resolveStartIcon(startIcon: string): string {
 	if (startIcon === "bloom-colorful") return "/bloom-colorful.png";
 	if (startIcon === "bloom-golden") return "/bloom-golden.png";
 	if (startIcon === "bloom-biscuit") return "/bloom-biscuit.png";
-	if (startIcon === "windows") return "/windows.png";
+	if (startIcon === "windows") return "/windows-11.png";
 	if (startIcon.startsWith("custom:")) return startIcon.slice("custom:".length);
 	return "/bloom.png";
 }
@@ -110,18 +147,25 @@ const ITEM_ANIMATE = { opacity: 1, scale: 1 };
 const ITEM_EXIT = { opacity: 0, scale: 0 };
 
 // One dot per open window, capped at three.
-function WindowDots({ count }: { count: number }) {
+function WindowDots({ count, background }: { count: number; background?: boolean }) {
+	useTranslation();
 	return (
-		<div className="window-dots">
-			{Array.from({ length: Math.min(Math.max(count, 1), 3) }, (_, i) => (
-				<div key={i} className="active-indicator" />
+		<div
+			className="window-dots"
+			role="img"
+			aria-label={
+				background ? t("ui.dock.runningInBackground") : tCount("ui.dock.countOpenWindows", count)
+			}
+		>
+			{Array.from({ length: background ? 1 : Math.min(Math.max(count, 1), 3) }, (_, i) => (
+				<div key={i} className={`active-indicator${background ? " background-indicator" : ""}`} />
 			))}
 		</div>
 	);
 }
 
 const Dock = memo(function Dock() {
-	const { t } = useTranslation();
+	useTranslation();
 
 	useEffect(() => {
 		return initTheme();
@@ -130,6 +174,8 @@ const Dock = memo(function Dock() {
 	const [pinnedApps, setPinnedApps] = useState<AppInfo[]>([]);
 	const [activeApps, setActiveApps] = useState<AppInfo[]>([]);
 	const iconsRef = useRef<Record<string, string>>({});
+	const pendingIconsRef = useRef(new Set<string>());
+	const iconGenerationRef = useRef(0);
 	const [, setIconsTick] = useState(0);
 	const [dockMode, setDockMode] = useState(() => {
 		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
@@ -139,15 +185,32 @@ const Dock = memo(function Dock() {
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(
 		() => localStorage.getItem("bloom-dock-preview-enabled") !== "false"
 	);
+	const [dockShowBackgroundApps, setDockShowBackgroundApps] = useState(
+		() => localStorage.getItem("bloom-dock-show-background-apps") !== "false"
+	);
+	const [edgeShineEnabled, setEdgeShineEnabled] = useState(
+		() => localStorage.getItem("bloom-edge-shine-enabled") !== "false"
+	);
 	const [dockIconOnly, setDockIconOnly] = useState(
 		() => localStorage.getItem("bloom-dock-icon-only") === "true"
+	);
+	const [dockSeparatorEnabled, setDockSeparatorEnabled] = useState(
+		() => localStorage.getItem("bloom-dock-separator-enabled") !== "false"
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
 		() => localStorage.getItem("bloom-dock-adaptive") === "true"
 	);
+	const [dockTaskView, setDockTaskView] = useState(
+		() => localStorage.getItem("bloom-dock-task-view") === "true"
+	);
 	const [startIcon, setStartIcon] = useState(
 		() => localStorage.getItem("bloom-start-icon") || "default"
 	);
+	const [dockExtrasPosition, setDockExtrasPosition] = useState(
+		() => localStorage.getItem("bloom-dock-extras-position") || "off"
+	);
+	const [dockExtras, setDockExtras] = useState<DockExtra[]>([]);
+	const [dockExtrasRevision, setDockExtrasRevision] = useState(0);
 	const [isMaximized, setIsMaximized] = useState(false);
 	const [previewData, setPreviewData] = useState<{
 		id: string;
@@ -156,15 +219,21 @@ const Dock = memo(function Dock() {
 	const [isDockHovered, setIsDockHovered] = useState(false);
 	const [isEdgeHovered, setIsEdgeHovered] = useState(false);
 	const [isOverlapped, setIsOverlapped] = useState(false);
-	const [isVisible, setIsVisible] = useState(true);
+	const [systemVisible, setIsVisible] = useState(true);
+	const [shellInteraction, setShellInteraction] = useState(false);
+	const isVisible = systemVisible || shellInteraction;
 	const [showAddPopup, setShowAddPopup] = useState(false);
+	const [nativeMenuOpen, setNativeMenuOpen] = useState(false);
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
 		y: number;
 		app: AppInfo | null;
+		extra?: DockExtra | null;
+		taskView?: boolean;
 	} | null>(null);
 	const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 	const [activeOrder, setActiveOrder] = useState<string[]>([]);
+	const observedTrayPathsRef = useRef(new Set<string>());
 	const [isDragging, setIsDragging] = useState(false);
 	const [hoveredApp, setHoveredApp] = useState<string | null>(null);
 	const [pressedApp, setPressedApp] = useState<string | null>(null);
@@ -203,7 +272,7 @@ const Dock = memo(function Dock() {
 
 	const isCurrentlyHovered = isDockHovered || isEdgeHovered;
 	const [interactionState, setInteractionState] = useState<"active" | "grace" | "none">("none");
-	const isAnyInteraction = isCurrentlyHovered || !!contextMenu || showAddPopup;
+	const isAnyInteraction = isCurrentlyHovered || !!contextMenu || showAddPopup || nativeMenuOpen;
 
 	const previewTimerRef = useRef<any>(null);
 	const isPreviewHoveredRef = useRef(false);
@@ -219,7 +288,9 @@ const Dock = memo(function Dock() {
 		}
 	}, [isAnyInteraction]);
 
+	const onboardingReveal = useOnboardingReveal("dock");
 	const isHidden =
+		!onboardingReveal &&
 		!startupAnimating &&
 		((dockMode === "smart" && isOverlapped && interactionState === "none") ||
 			(dockMode === "peek" && interactionState === "none"));
@@ -281,13 +352,26 @@ const Dock = memo(function Dock() {
 			if (dockRef.current) {
 				const rect = dockRef.current.getBoundingClientRect();
 				const hasPreview = !!previewData;
+				const content = dockRef.current.querySelector<HTMLElement>(".dock-reorder-container");
+				const style = getComputedStyle(dockRef.current);
+				const overlap = content
+					? dockOverlapSpan(
+							window.innerWidth,
+							content.scrollWidth,
+							parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
+							scale
+						)
+					: null;
 				invoke("update_dock_rect", {
 					rect: {
 						x: Math.round(rect.x) - (hasPreview ? 500 : 0),
 						y: Math.round(rect.y) - (hasPreview ? 320 : 0),
 						width: Math.round(rect.width) + (hasPreview ? 1000 : 0),
 						height: Math.round(rect.height) + (hasPreview ? 320 : 0)
-					}
+					},
+					overlapRect: overlap
+						? { ...overlap, y: Math.round(rect.y), height: Math.round(rect.height) }
+						: null
 				}).catch(() => {});
 			}
 		};
@@ -296,12 +380,14 @@ const Dock = memo(function Dock() {
 		window.addEventListener("resize", updateRect);
 		const observer = new ResizeObserver(updateRect);
 		if (dockRef.current) observer.observe(dockRef.current);
+		const content = dockRef.current?.querySelector(".dock-reorder-container");
+		if (content) observer.observe(content);
 
 		return () => {
 			window.removeEventListener("resize", updateRect);
 			observer.disconnect();
 		};
-	}, [pinnedApps, activeApps, isHidden, previewData, scale]);
+	}, [pinnedApps, activeApps, isHidden, isExpanded, previewData, scale]);
 
 	useEffect(() => {
 		const init = async () => {
@@ -325,22 +411,31 @@ const Dock = memo(function Dock() {
 
 			const preview = getVal("bloom-dock-preview-enabled", "true");
 			setDockPreviewEnabled(preview === "true");
+			setDockShowBackgroundApps(getVal("bloom-dock-show-background-apps") !== "false");
+			setEdgeShineEnabled(getVal("bloom-edge-shine-enabled", "true") !== "false");
 
 			const iconOnly = getVal("bloom-dock-icon-only", "false");
 			setDockIconOnly(iconOnly === "true");
 
+			const separator = getVal("bloom-dock-separator-enabled", "true");
+			setDockSeparatorEnabled(separator === "true");
+
 			const adaptive = getVal("bloom-dock-adaptive", "false");
 			setDockAdaptive(adaptive === "true");
+			setDockTaskView(getVal("bloom-dock-task-view", "false") === "true");
 
 			const startIconVal = getVal("bloom-start-icon", "default") || "default";
 			setStartIcon(startIconVal);
+
+			const extrasPosition = getVal("bloom-dock-extras-position", "off");
+			if (extrasPosition) setDockExtrasPosition(extrasPosition);
 
 			const scaleVal = getVal("bloom-scale");
 			if (scaleVal !== null) setScale(parseFloat(scaleVal));
 
 			const pinned = await invoke<AppInfo[]>("load_pinned_apps");
 			setPinnedApps(pinned.map((a) => ({ ...a, is_pinned: true })));
-			pinned.forEach((app) => fetchIcon(app.path));
+			pinned.forEach((app) => fetchIcon(app.path, app.name));
 
 			// Warm the installed-apps cache in the background so the add-app
 			// popup opens with data ready instead of waiting on the scan.
@@ -353,6 +448,24 @@ const Dock = memo(function Dock() {
 			} catch (_) {}
 		};
 		init();
+
+		// The installed-apps scan finishes after the first load; pins saved under
+		// their executable's name then get their Start menu name.
+		const unlistenInstalledApps = listen("installed-apps-updated", async () => {
+			try {
+				const refreshed = await invoke<AppInfo[]>("load_pinned_apps");
+				const names = new Map(refreshed.map((a) => [a.path, a.name]));
+				setPinnedApps((prev) => {
+					const next = prev.map((a) => ({ ...a, name: names.get(a.path) ?? a.name }));
+					if (!next.some((a, i) => a.name !== prev[i].name)) return prev;
+					// Pins are otherwise saved only when they change; keep the names.
+					queueMicrotask(() => {
+						invoke("save_pinned_apps", { apps: next }).catch(console.error);
+					});
+					return next;
+				});
+			} catch (_) {}
+		});
 
 		const unlistenOverlap = listen<boolean>("dock-overlap", (event) => {
 			setIsOverlapped(event.payload);
@@ -372,6 +485,7 @@ const Dock = memo(function Dock() {
 
 		return () => {
 			unlistenOverlap.then((f) => f());
+			unlistenInstalledApps.then((f) => f());
 			unlistenEdgeHover.then((f) => f());
 			unlistenVisibility.then((f) => f());
 			unlistenMaximized.then((f) => f());
@@ -381,32 +495,101 @@ const Dock = memo(function Dock() {
 	useSettingsSync({
 		"bloom-dock-mode": setDockMode,
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
+		"bloom-dock-show-background-apps": { set: setDockShowBackgroundApps, defaultValue: true },
+		"bloom-edge-shine-enabled": setEdgeShineEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
+		"bloom-dock-separator-enabled": setDockSeparatorEnabled,
 		"bloom-dock-adaptive": setDockAdaptive,
+		"bloom-dock-task-view": setDockTaskView,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale,
-		"bloom-language": (value) => setLocale(resolveLanguage(String(value)))
+		"bloom-language": {
+			set: (value) => setLocale(resolveLanguage(String(value))),
+			defaultValue: "system"
+		},
+		"bloom-dock-extras-position": setDockExtrasPosition,
+		"bloom-dock-extras-drives": () => setDockExtrasRevision((r) => r + 1),
+		"bloom-dock-extras-recycle-bin": () => setDockExtrasRevision((r) => r + 1),
+		"bloom-dock-extras-hidden-drives": () => setDockExtrasRevision((r) => r + 1),
+		"bloom-dock-extras-folders": () => setDockExtrasRevision((r) => r + 1),
+		"bloom-dock-extras-custom-folders": () => setDockExtrasRevision((r) => r + 1)
 	});
 
 	useEffect(() => {
+		if (dockExtrasPosition === "off") {
+			setDockExtras([]);
+			return;
+		}
+		let stopped = false;
+		let loadSeq = 0;
+		const load = async () => {
+			const seq = ++loadSeq;
+			try {
+				const extras = await invoke<DockExtra[]>("get_dock_extras");
+				// A slow load must never overwrite a newer one that already landed.
+				if (!stopped && seq === loadSeq) setDockExtras(extras);
+			} catch (e) {
+				console.error("Failed to load dock extras:", e);
+			}
+		};
+		load();
+
+		// Drives can be plugged in or removed at any time; converge like the
+		// window list does instead of trusting a one-shot fetch.
+		const interval = setInterval(load, 10000);
+		return () => {
+			stopped = true;
+			clearInterval(interval);
+		};
+	}, [dockExtrasPosition, dockExtrasRevision]);
+
+	useEffect(() => {
 		let pollSeq = 0;
+		let stopped = false;
 
 		const poll = async () => {
 			if (isDragging) return;
 			const seq = ++pollSeq;
-			const running = await invoke<AppInfo[]>("get_active_windows");
+			let windows: AppInfo[];
+			let tray: TrayApp[];
+			try {
+				[windows, tray] = await Promise.all([
+					invoke<AppInfo[]>("get_active_windows"),
+					invoke<TrayApp[]>("get_tray_apps").catch(() => [])
+				]);
+			} catch (error) {
+				console.error("Failed to refresh dock apps:", error);
+				return;
+			}
 			// Ignore responses that arrive out of order: an older poll must never
 			// overwrite a newer state, which would resurrect closed apps.
-			if (seq !== pollSeq) return;
-			setActiveApps(running);
+			if (stopped || seq !== pollSeq) return;
+			const selected = selectDockTrayApps(windows, tray, observedTrayPathsRef.current, (app) =>
+				pinnedApps.some((pinned) =>
+					isSameApp(pinned, {
+						name: app.name,
+						path: app.path,
+						icon: null,
+						is_running: true,
+						executable: fileOf(app.path)
+					})
+				)
+			);
+			observedTrayPathsRef.current = selected.observed;
+			const running = mergeTrayApps(windows, selected.visible);
+			setActiveApps((prev) => (sameRunningApps(prev, running) ? prev : running));
 
 			setActiveOrder((prev) => {
 				const newPaths = running.map((r) => appIdentity(r.path, r.executable, r.name));
 				const existingPaths = prev.filter((p) => newPaths.includes(p));
 				const addedPaths = newPaths.filter((p) => !prev.includes(p));
-				return [...existingPaths, ...addedPaths];
+				const next = [...existingPaths, ...addedPaths];
+				return next.length === prev.length && next.every((path, i) => path === prev[i])
+					? prev
+					: next;
 			});
 
+			pinnedApps.forEach((app) => fetchIcon(app.path, app.name));
 			running.forEach((app) => fetchIcon(app.path, app.name, app.hwnd));
 		};
 
@@ -420,44 +603,50 @@ const Dock = memo(function Dock() {
 		const interval = setInterval(poll, 10000);
 
 		return () => {
+			stopped = true;
 			clearInterval(interval);
 			unlistenWindowChange.then((f) => f());
 		};
-	}, [isDragging]);
+	}, [isDragging, pinnedApps]);
 
-	const fetchIcon = async (path: string, name?: string, hwnd?: number, retryCount = 0) => {
+	const fetchIcon = async (path: string, name?: string, hwnd?: number) => {
+		// This is an internal launch target, not an executable the shell can resolve.
+		if (path === "bloom-settings") return;
 		const isHost = isBrowserHost(path);
 		const cacheKey =
 			isHost && name ? `${path}:${name.toLowerCase()}` : hwnd ? `${path}-${hwnd}` : path;
 
-		if (iconsRef.current[cacheKey]) return;
+		if (iconsRef.current[cacheKey] || pendingIconsRef.current.has(cacheKey)) return;
+		pendingIconsRef.current.add(cacheKey);
+		const generation = iconGenerationRef.current;
 		try {
 			const icon = await invoke<string | null>("get_app_icon", {
 				path,
 				name: name || null,
 				hwnd: hwnd || null
 			});
-			if (icon) {
+			if (icon && generation === iconGenerationRef.current) {
 				iconsRef.current[cacheKey] = icon;
 				if (!isHost) iconsRef.current[path] = icon;
 				setIconsTick((t) => t + 1);
-			} else if (retryCount < 3 && !hwnd) {
-				setTimeout(() => fetchIcon(path, name, undefined, retryCount + 1), 3000 * (retryCount + 1));
 			}
 		} catch (e) {
 			console.error(`Failed to fetch icon for ${path}:`, e);
-			if (retryCount < 3 && !hwnd) {
-				setTimeout(() => fetchIcon(path, name, undefined, retryCount + 1), 3000 * (retryCount + 1));
-			}
+		} finally {
+			// Window changes and the existing poll retry missing icons. Only an
+			// actual in-flight request is excluded; no timer can retain a stale HWND.
+			if (generation === iconGenerationRef.current) pendingIconsRef.current.delete(cacheKey);
 		}
 	};
 
 	const handleClearIconCache = async () => {
 		try {
 			await invoke("clear_icon_cache");
+			iconGenerationRef.current += 1;
+			pendingIconsRef.current.clear();
 			iconsRef.current = {};
 			setIconsTick((t) => t + 1);
-			pinnedApps.forEach((app) => fetchIcon(app.path));
+			pinnedApps.forEach((app) => fetchIcon(app.path, app.name));
 		} catch (e) {
 			console.error("Failed to clear icon cache:", e);
 		}
@@ -537,6 +726,8 @@ const Dock = memo(function Dock() {
 		try {
 			if (app.path === "start") {
 				await invoke("open_app", { appName: "start" });
+			} else if (app.is_background && app.tray_ids?.length === 1) {
+				await invoke("activate_tray_icon", { trayId: app.tray_ids[0] });
 			} else if (app.all_hwnds && app.all_hwnds.length > 1) {
 				// Several windows: bring the most recent forward, then cycle.
 				await invoke("focus_app_windows", { hwnds: app.all_hwnds.map(([hwnd]) => hwnd) });
@@ -547,6 +738,7 @@ const Dock = memo(function Dock() {
 			}
 		} catch (e) {
 			console.error(`Failed to interact with ${app.name}:`, e);
+			showActionError(e);
 		}
 	};
 
@@ -587,10 +779,94 @@ const Dock = memo(function Dock() {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const popupRef = useRef<HTMLDivElement>(null);
 
+	const showActionError = (error: unknown) => {
+		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+		setToast(typeof error === "string" ? error : "Could not complete this action.");
+		toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+	};
+
+	const openTrayMenu = async (trayId: string) => {
+		setNativeMenuOpen(true);
+		closeMenu();
+		setPreviewData(null);
+		try {
+			// DOCK_RECT can still include the preview's padded hit area until
+			// the next render. Publish the actual bar before placing its menu.
+			const bar = dockRef.current?.getBoundingClientRect();
+			if (bar) {
+				await invoke("update_dock_rect", {
+					rect: {
+						x: Math.round(bar.x),
+						y: Math.round(bar.y),
+						width: Math.round(bar.width),
+						height: Math.round(bar.height)
+					}
+				});
+			}
+			await invoke("show_tray_context_menu", { trayId });
+		} catch (error) {
+			showActionError(error);
+		} finally {
+			setNativeMenuOpen(false);
+		}
+	};
+
 	const handleContextMenu = (e: React.MouseEvent, app: AppInfo | null) => {
 		e.stopPropagation();
 		e.preventDefault();
 		setContextMenu({ x: e.clientX, y: e.clientY, app });
+	};
+
+	const handleExtraClick = (extra: DockExtra) => {
+		invoke("open_dock_extra", { kind: extra.kind, path: extra.path }).catch(showActionError);
+	};
+
+	const handleExtraContextMenu = (e: React.MouseEvent, extra: DockExtra) => {
+		e.stopPropagation();
+		e.preventDefault();
+		setContextMenu({ x: e.clientX, y: e.clientY, app: null, extra });
+	};
+
+	const ejectExtra = (extra: DockExtra) => {
+		closeMenu();
+		invoke("eject_dock_extra", { path: extra.path }).catch(showActionError);
+	};
+
+	const removeExtraFromDock = (extra: DockExtra) => {
+		const next = removeCustomFolder(
+			localStorage.getItem("bloom-dock-extras-custom-folders"),
+			extra.path
+		);
+		localStorage.setItem("bloom-dock-extras-custom-folders", next);
+		invoke("save_setting", {
+			key: "bloom-dock-extras-custom-folders",
+			value: next
+		}).catch(console.error);
+		closeMenu();
+	};
+
+	// Settings > Dock > Drives shows it again.
+	const hideDriveFromDock = (extra: DockExtra) => {
+		const letter = driveLetter(extra);
+		if (!letter) return;
+		const next = hideDrive(localStorage.getItem("bloom-dock-extras-hidden-drives"), letter);
+		localStorage.setItem("bloom-dock-extras-hidden-drives", next);
+		invoke("save_setting", { key: "bloom-dock-extras-hidden-drives", value: next }).catch(
+			showActionError
+		);
+		closeMenu();
+	};
+
+	const openTaskView = () => {
+		invoke("open_system_action", { action: "task-view" }).catch(showActionError);
+	};
+
+	// Like the taskbar's "Hide Task View button"; Settings turns it back on.
+	const hideTaskView = () => {
+		setDockTaskView(false);
+		localStorage.setItem("bloom-dock-task-view", "false");
+		invoke("save_setting", { key: "bloom-dock-task-view", value: "false" }).catch(showActionError);
+		closeMenu();
 	};
 
 	// Measured before paint: the menu's height depends on which items it shows,
@@ -620,6 +896,71 @@ const Dock = memo(function Dock() {
 		setShowAddPopup(false);
 		invoke("set_menu_open", { open: false, rect: null }).catch(() => {});
 	};
+
+	// A press outside the dock while a menu or the Add App popup is open. The
+	// click itself goes to whatever is under it (the window region keeps the
+	// dock out of the way), so the backend's mouse hook reports it instead.
+	useEffect(() => {
+		const unlisten = listen("dock-dismiss-menu", () => {
+			setContextMenu(null);
+			setActiveSubmenu(null);
+			setShowAddPopup(false);
+		});
+		return () => {
+			unlisten.then((f) => f());
+		};
+	}, []);
+
+	// The tallest the expanded bar has been, which sets the region's bottom band.
+	const dockBandHeightRef = useRef(0);
+	const sendDockRegion = useMemo(
+		() =>
+			createRegionSender((rects) => {
+				invoke("set_window_region", { rects }).catch(() => {});
+			}),
+		[]
+	);
+
+	// Clip the dock window to what it draws (see window_region.rs). The bar
+	// gets a full-width band along the bottom, as tall as the expanded bar plus
+	// room for the icons' lift and tooltips above it, so its reveal and width
+	// animations are never clipped; the click-through switching still keeps
+	// the band clear unless the cursor is at the dock. The floating parts are
+	// measured, padded for their shadows. While an icon is dragged the whole
+	// window is included so the dragged icon isn't clipped.
+	useEffect(() => {
+		const bar = dockRef.current?.getBoundingClientRect();
+		if (bar && isExpanded && !isHidden && isVisible) {
+			dockBandHeightRef.current = Math.max(dockBandHeightRef.current, bar.height);
+		}
+		const band = (dockBandHeightRef.current || 72 * scale) + 64 * scale;
+		const wanted: RegionRect[] = [
+			{ x: 0, y: window.innerHeight - band, width: window.innerWidth, height: band }
+		];
+		if (isDragging) {
+			wanted.push({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight });
+		}
+		wanted.push(
+			...measureElements([
+				[".preview-tooltip", 40],
+				[".context-menu", 34],
+				[".submenu", 34],
+				[".dock-toast", 20]
+			])
+		);
+		// The Add App popup grows from scaleY 0, and that animation doesn't
+		// re-render the dock, so its own box would be measured collapsed. Its
+		// anchor isn't transformed and is exactly as tall as the open popup, so
+		// the height comes from there and the width from the popup itself.
+		const popup = popupRef.current;
+		const anchor = popup?.parentElement;
+		if (popup && anchor) {
+			const p = popup.getBoundingClientRect();
+			const a = anchor.getBoundingClientRect();
+			wanted.push(padRect({ x: p.left, y: a.top, width: p.width, height: a.height }, 40));
+		}
+		sendDockRegion(wanted);
+	});
 
 	useEffect(() => {
 		let open = false;
@@ -707,6 +1048,16 @@ const Dock = memo(function Dock() {
 				}
 			}
 
+			// A pinned shell id and a visible window can have different paths
+			// (for example com.sehaz.bloom and bloom.exe). Match both visible
+			// and background apps so the window cannot become a second dock item.
+			const equivalent = activeApps.find(
+				(app) => !matchedRunningKeys.has(itemKey(app)) && isSameApp(p, app)
+			);
+			if (equivalent) {
+				matchedRunningKeys.add(itemKey(equivalent));
+				return equivalent;
+			}
 			return undefined;
 		};
 
@@ -723,7 +1074,16 @@ const Dock = memo(function Dock() {
 			},
 			...pinnedApps.map((p) => {
 				const running = findRunningApp(p);
-				return { ...p, is_running: !!running, hwnd: running?.hwnd, all_hwnds: running?.all_hwnds };
+				return {
+					...p,
+					is_running: !!running,
+					icon_path: running?.path,
+					icon_name: running?.name,
+					hwnd: running?.hwnd,
+					all_hwnds: running?.all_hwnds,
+					tray_ids: running?.tray_ids,
+					is_background: running?.is_background
+				};
 			})
 		];
 
@@ -731,16 +1091,47 @@ const Dock = memo(function Dock() {
 			.map((id) => activeApps.find((a) => appIdentity(a.path, a.executable, a.name) === id))
 			.filter(
 				(a): a is AppInfo =>
-					!!a && !matchedRunningKeys.has(appIdentity(a.path, a.executable, a.name))
+					!!a && (dockShowBackgroundApps || !a.is_background) && !matchedRunningKeys.has(itemKey(a))
 			);
 
 		return [...pinned, ...unpinned];
-	}, [pinnedApps, activeApps, activeOrder]);
+	}, [pinnedApps, activeApps, activeOrder, dockShowBackgroundApps]);
 
 	const startItem = useMemo(
 		() => dockItems.find((i) => i.path === "start") as AppInfo,
 		[dockItems]
 	);
+	// Only a deliberate icon hover dismisses Start. Once dismissed, the session
+	// belongs to the whole dock, including the gaps between icons and its popups.
+	const dockPopupRequested = !!contextMenu || showAddPopup || nativeMenuOpen;
+	const dockHoverTarget =
+		hoveredApp !== null && (!startItem || hoveredApp !== itemKey(startItem)) ? hoveredApp : null;
+	const keepShellInteraction =
+		shellInteraction && (isDockHovered || !!previewData || dockPopupRequested);
+	useEffect(() => {
+		const report = (active: boolean) => {
+			void invoke("set_dock_popup_active", { active }).catch(console.error);
+		};
+		if (dockPopupRequested || keepShellInteraction) {
+			report(true);
+			return;
+		}
+		// Cancel short pass-overs; restarting for a different icon requires a
+		// fresh dwell. A brief leave grace bridges the dock-to-popup handoff.
+		const timer = setTimeout(() => report(dockHoverTarget !== null), dockHoverTarget ? 350 : 250);
+		return () => clearTimeout(timer);
+	}, [dockPopupRequested, dockHoverTarget, keepShellInteraction]);
+	useEffect(() => {
+		let disposed = false;
+		const unlisten = listen<boolean>("dock-shell-interaction", ({ payload }) => {
+			if (!disposed) setShellInteraction(payload);
+		});
+		return () => {
+			disposed = true;
+			void unlisten.then((stop) => stop());
+			void invoke("set_dock_popup_active", { active: false });
+		};
+	}, []);
 	const pinnedItems = useMemo(
 		() => dockItems.filter((i) => i.path !== "start" && i.is_pinned),
 		[dockItems]
@@ -810,7 +1201,7 @@ const Dock = memo(function Dock() {
 
 		if (hoveredApp && !isDragging) {
 			const app = dockItems.find((a) => itemKey(a) === hoveredApp);
-			if (app && app.is_running) {
+			if (app && app.is_running && !app.is_background) {
 				const hwndsToCapture = app.all_hwnds || (app.hwnd ? [[app.hwnd, app.name]] : []);
 
 				previewTimerRef.current = setTimeout(async () => {
@@ -867,6 +1258,46 @@ const Dock = memo(function Dock() {
 		drag: { y: -10, scale: 1.1, opacity: 0.8 },
 		tap: { scale: 0.95 }
 	};
+
+	const renderExtra = (extra: DockExtra) => (
+		<motion.div
+			key={extra.id}
+			layout
+			initial={{ opacity: 0, scale: 0 }}
+			animate={{ opacity: 1, scale: 1 }}
+			exit={{ opacity: 0, scale: 0, transition: { duration: 0.12 } }}
+			className="dock-icon-wrapper"
+			onContextMenu={(e) => handleExtraContextMenu(e, extra)}
+			onMouseEnter={() => setHoveredApp(extra.id)}
+			onMouseLeave={() => {
+				setHoveredApp(null);
+				setPressedApp(null);
+			}}
+			onMouseDown={(e) => {
+				if (e.button === 1) e.preventDefault();
+			}}
+			onClick={(e) => {
+				e.stopPropagation();
+				handleExtraClick(extra);
+			}}
+		>
+			{hoveredApp === extra.id && <div className="tooltip">{extra.name}</div>}
+			<motion.div
+				className="dock-icon"
+				variants={iconVariants}
+				animate={pressedApp === extra.id ? "tap" : hoveredApp === extra.id ? "hover" : "idle"}
+				onPointerDown={() => setPressedApp(extra.id)}
+				onPointerUp={() => setPressedApp(null)}
+				onPointerCancel={() => setPressedApp(null)}
+			>
+				{extra.icon ? (
+					<img src={extra.icon} alt={extra.name} draggable={false} />
+				) : (
+					<div className="fallback-icon">{extra.name[0]}</div>
+				)}
+			</motion.div>
+		</motion.div>
+	);
 
 	return (
 		<div className={`dock-container ${isDragging ? "dragging" : ""}`} onClick={closeMenu}>
@@ -926,6 +1357,12 @@ const Dock = memo(function Dock() {
 					style={{ originX: 0.5, originY: 1, minWidth: 34 }}
 					onContextMenu={(e) => handleContextMenu(e, null)}
 				>
+					<EdgeSurface
+						edge="bottom"
+						flares={isExpanded && !isHidden}
+						reflective={edgeShineEnabled}
+						resolutionScale={scale}
+					/>
 					<AnimatePresence>
 						{isExpanded && (
 							<motion.div
@@ -985,6 +1422,61 @@ const Dock = memo(function Dock() {
 											/>
 										</motion.div>
 									</motion.div>
+								)}
+
+								{dockTaskView && (
+									<motion.div
+										key="task-view"
+										initial={{ opacity: 0, scale: 0 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0, transition: { duration: 0.12 } }}
+										className="dock-icon-wrapper"
+										onContextMenu={(e) => {
+											e.stopPropagation();
+											e.preventDefault();
+											setContextMenu({ x: e.clientX, y: e.clientY, app: null, taskView: true });
+										}}
+										onMouseEnter={() => setHoveredApp("task-view")}
+										onMouseLeave={() => {
+											setHoveredApp(null);
+											setPressedApp(null);
+										}}
+									>
+										{(!dockPreviewEnabled || hoveredApp === "task-view") && (
+											<div className="tooltip">{t("ui.dock.taskView")}</div>
+										)}
+										<motion.div
+											className="dock-icon"
+											variants={iconVariants}
+											animate={
+												pressedApp === "task-view"
+													? "tap"
+													: hoveredApp === "task-view"
+														? "hover"
+														: "idle"
+											}
+											onPointerDown={() => setPressedApp("task-view")}
+											onPointerUp={() => setPressedApp(null)}
+											onPointerCancel={() => setPressedApp(null)}
+											onClick={(e) => {
+												e.stopPropagation();
+												openTaskView();
+											}}
+										>
+											<TaskViewIcon />
+										</motion.div>
+									</motion.div>
+								)}
+
+								{dockExtrasPosition === "left" && dockExtras.length > 0 && (
+									<>
+										{dockExtras.map((extra) => renderExtra(extra))}
+										<div
+											className="dock-app-divider"
+											role="separator"
+											aria-orientation="vertical"
+										/>
+									</>
 								)}
 
 								<Reorder.Group
@@ -1123,9 +1615,13 @@ const Dock = memo(function Dock() {
 														const icon =
 															customIcons[cacheKey] ||
 															(allowPathFallback && customIcons[app.path]) ||
+															iconsRef.current[dockIconKey(app, isHost)] ||
 															iconsRef.current[cacheKey] ||
 															(allowPathFallback && iconsRef.current[app.path]) ||
-															app.icon;
+															app.icon ||
+															(app.path === "bloom-settings"
+																? "/bloom-settings-sliders.png"
+																: undefined);
 
 														const isBloomOrSettings =
 															app.name.toLowerCase() === "settings" ||
@@ -1136,7 +1632,13 @@ const Dock = memo(function Dock() {
 															<img
 																src={icon}
 																alt={app.name}
-																className={isBloomOrSettings ? "bloom-icon-img" : ""}
+																className={
+																	icon === "/bloom-settings-sliders.png"
+																		? "bloom-settings-icon"
+																		: isBloomOrSettings && app.path !== "bloom-settings"
+																			? "bloom-icon-img"
+																			: ""
+																}
 																draggable={false}
 															/>
 														) : (
@@ -1144,11 +1646,26 @@ const Dock = memo(function Dock() {
 														);
 													})()}
 												</motion.div>
-												{app.is_running && <WindowDots count={app.all_hwnds?.length ?? 1} />}
+												{app.is_running && (dockShowBackgroundApps || !app.is_background) && (
+													<WindowDots
+														count={app.all_hwnds?.length ?? 1}
+														background={app.is_background}
+													/>
+												)}
 											</motion.div>
 										</Reorder.Item>
 									))}
 								</Reorder.Group>
+
+								{dockSeparatorEnabled &&
+									unpinnedItems.length > 0 &&
+									(pinnedItems.length > 0 || startItem) && (
+										<div
+											className="dock-app-divider"
+											role="separator"
+											aria-orientation="vertical"
+										/>
+									)}
 
 								{unpinnedItems.map((app) => (
 									<motion.div
@@ -1270,9 +1787,13 @@ const Dock = memo(function Dock() {
 												const icon =
 													customIcons[cacheKey] ||
 													(allowPathFallback && customIcons[app.path]) ||
+													iconsRef.current[dockIconKey(app, isHost)] ||
 													iconsRef.current[cacheKey] ||
 													(allowPathFallback && iconsRef.current[app.path]) ||
-													app.icon;
+													app.icon ||
+													(app.path === "bloom-settings"
+														? "/bloom-settings-sliders.png"
+														: undefined);
 												const isBloomOrSettings =
 													app.name.toLowerCase() === "settings" ||
 													app.name.toLowerCase() === "bloom" ||
@@ -1281,7 +1802,13 @@ const Dock = memo(function Dock() {
 													<img
 														src={icon}
 														alt={app.name}
-														className={isBloomOrSettings ? "bloom-icon-img" : ""}
+														className={
+															icon === "/bloom-settings-sliders.png"
+																? "bloom-settings-icon"
+																: isBloomOrSettings && app.path !== "bloom-settings"
+																	? "bloom-icon-img"
+																	: ""
+														}
 														draggable={false}
 													/>
 												) : (
@@ -1289,9 +1816,25 @@ const Dock = memo(function Dock() {
 												);
 											})()}
 										</motion.div>
-										{app.is_running && <WindowDots count={app.all_hwnds?.length ?? 1} />}
+										{app.is_running && (
+											<WindowDots
+												count={app.all_hwnds?.length ?? 1}
+												background={app.is_background}
+											/>
+										)}
 									</motion.div>
 								))}
+
+								{dockExtrasPosition === "right" && dockExtras.length > 0 && (
+									<>
+										<div
+											className="dock-app-divider"
+											role="separator"
+											aria-orientation="vertical"
+										/>
+										{dockExtras.map((extra) => renderExtra(extra))}
+									</>
+								)}
 							</motion.div>
 						)}
 					</AnimatePresence>
@@ -1310,22 +1853,103 @@ const Dock = memo(function Dock() {
 					}}
 					onClick={(e) => e.stopPropagation()}
 				>
-					{contextMenu.app ? (
-						<>
-							{contextMenu.app.is_running && contextMenu.app.path !== "start" && (
-								<>
+					{!contextMenu.extra &&
+						!contextMenu.taskView &&
+						(!contextMenu.app || contextMenu.app.path === "start") && (
+							<div
+								style={{
+									maxHeight: Math.max(64, window.innerHeight / scale - 200),
+									overflowY: "auto"
+								}}
+							>
+								{(contextMenu.app
+									? [
+											["installed-apps", "Installed Apps"],
+											["power-options", t("ui.dock.powerOptions")],
+											["device-manager", t("ui.dock.deviceManager")],
+											["network-connections", t("ui.dock.networkConnections")],
+											["disk-management", t("ui.dock.diskManagement")],
+											["computer-management", t("ui.dock.computerManagement")],
+											["task-manager", t("ui.dock.taskManager")],
+											["settings", t("settings.title")]
+										]
+									: [
+											["task-manager", t("ui.dock.taskManager")],
+											["taskbar-settings", t("ui.dock.taskbarSettings")]
+										]
+								).map(([action, label]) => (
 									<div
+										key={action}
 										className="menu-item"
 										onClick={() => {
-											handleNewInstance(contextMenu.app!);
 											closeMenu();
+											invoke("open_system_action", { action }).catch(showActionError);
 										}}
 									>
-										{t("dock.menu.openNewInstance")}
+										{label}
 									</div>
+								))}
+								<div className="menu-divider" />
+							</div>
+						)}
+					{contextMenu.extra ? (
+						<>
+							<div
+								className="menu-item"
+								onClick={() => {
+									const extra = contextMenu.extra!;
+									closeMenu();
+									handleExtraClick(extra);
+								}}
+							>
+								{t("ui.dock.open")}
+							</div>
+							{contextMenu.extra.kind === "drive" && contextMenu.extra.removable && (
+								<div className="menu-item" onClick={() => ejectExtra(contextMenu.extra!)}>
+									{t("ui.dock.eject")}
+								</div>
+							)}
+							{contextMenu.extra.kind === "drive" && (
+								<>
 									<div className="menu-divider" />
+									<div
+										className="menu-item quit"
+										onClick={() => hideDriveFromDock(contextMenu.extra!)}
+									>
+										{t("ui.dock.removeFromDock")}
+									</div>
 								</>
 							)}
+							{contextMenu.extra.kind === "custom" && (
+								<>
+									<div className="menu-divider" />
+									<div
+										className="menu-item quit"
+										onClick={() => removeExtraFromDock(contextMenu.extra!)}
+									>
+										{t("ui.dock.removeFromDock")}
+									</div>
+								</>
+							)}
+						</>
+					) : contextMenu.taskView ? (
+						<>
+							<div
+								className="menu-item"
+								onClick={() => {
+									closeMenu();
+									openTaskView();
+								}}
+							>
+								{t("ui.dock.openTaskView")}
+							</div>
+							<div className="menu-divider" />
+							<div className="menu-item" onClick={hideTaskView}>
+								{t("ui.dock.hideTaskView")}
+							</div>
+						</>
+					) : contextMenu.app ? (
+						<>
 							<div className="menu-item" onClick={() => togglePin(contextMenu.app!)}>
 								{contextMenu.app.is_pinned ? t("dock.menu.unpin") : t("dock.menu.pin")}
 							</div>
@@ -1412,9 +2036,41 @@ const Dock = memo(function Dock() {
 									</div>
 								</div>
 							</div>
-							{contextMenu.app.is_running && (
+							{(() => {
+								// App actions sit together just above Close, like the taskbar's
+								// jump list: the app's tray menus, then a new instance.
+								const app = contextMenu.app!;
+								const canOpenNew = app.is_running && app.path !== "start";
+								if (!app.tray_ids?.length && !canOpenNew) return null;
+								return (
+									<>
+										<div className="menu-divider" />
+										{app.tray_ids?.map((id, index, ids) => (
+											<div key={id} className="menu-item" onClick={() => void openTrayMenu(id)}>
+												{ids.length > 1
+													? t("ui.dock.trayMenuValue1", { value1: index + 1 })
+													: t("ui.dock.appTrayMenu")}
+											</div>
+										))}
+										{canOpenNew && (
+											<div
+												className="menu-item"
+												onClick={() => {
+													handleNewInstance(app);
+													closeMenu();
+												}}
+											>
+												{t("dock.menu.openNewInstance")}
+											</div>
+										)}
+									</>
+								);
+							})()}
+							{contextMenu.app.is_running && !contextMenu.app.is_background && (
 								<>
-									<div className="menu-divider" />
+									{contextMenu.app.path === "start" && !contextMenu.app.tray_ids?.length && (
+										<div className="menu-divider" />
+									)}
 									<div
 										className="menu-item quit"
 										onClick={async () => {
@@ -1427,7 +2083,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										{t("dock.menu.quitApp", { name: contextMenu.app.name })}
+										{t("ui.dock.close")}{" "}
+										{contextMenu.app.all_hwnds && contextMenu.app.all_hwnds.length > 1
+											? t("ui.dock.allWindows")
+											: t("ui.dock.window")}
 									</div>
 								</>
 							)}
@@ -1543,7 +2202,7 @@ function AddAppPopup({
 	pinned: AppInfo[];
 	bottom: number;
 }) {
-	const { t } = useTranslation();
+	useTranslation();
 	const [apps, setApps] = useState<AppInfo[]>([]);
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1612,7 +2271,7 @@ function AddAppPopup({
 		starts.sort(byName);
 		contains.sort(byName);
 		return [{ title: null, items: [...starts, ...contains].slice(0, 50) }];
-	}, [apps, debouncedSearch, pinned, runningSuggestions, t]);
+	}, [apps, debouncedSearch, pinned, runningSuggestions]);
 
 	// Flat selectable list; section headers are not selectable.
 	const flat = useMemo(() => sections.flatMap((s) => s.items), [sections]);

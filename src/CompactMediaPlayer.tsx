@@ -13,7 +13,7 @@ import {
 	VolumeLowIcon,
 	VolumeHighIcon
 } from "./icons";
-import { useTranslation } from "./i18n";
+import { t, useTranslation } from "./i18n";
 
 interface MediaInfo {
 	title: string;
@@ -128,7 +128,7 @@ export function CompactMediaPlayer({
 	onAnimateNext,
 	onLayoutChange
 }: CompactMediaPlayerProps) {
-	const { t } = useTranslation();
+	useTranslation();
 	const seekRef = useRef<HTMLInputElement>(null);
 
 	const positionMs = mediaInfo.position_ms ?? 0;

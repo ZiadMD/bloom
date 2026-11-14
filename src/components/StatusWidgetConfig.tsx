@@ -31,7 +31,7 @@ import {
 	ChevronDown
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
-import { useTranslation } from "../i18n";
+import { t, useTranslation } from "../i18n";
 
 export interface WidgetConfig {
 	left: string[];
@@ -64,7 +64,7 @@ const MAX_PER_ZONE = 2;
 /* ── Draggable pool chip ── */
 function PoolChip({ id }: { id: string }) {
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
-	const { t } = useTranslation();
+	useTranslation();
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 	const Icon = def.icon;
 	return (
@@ -97,7 +97,7 @@ function SortablePlacedChip({
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
-	const { t } = useTranslation();
+	useTranslation();
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id
 	});
@@ -164,7 +164,7 @@ function DropZone({
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
 	const { setNodeRef, isOver } = useDroppable({ id });
-	const { t } = useTranslation();
+	useTranslation();
 	return (
 		<div
 			ref={setNodeRef}
@@ -342,7 +342,7 @@ export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps)
 	);
 
 	const activeDef = activeId ? WIDGET_DEFS.find((w) => w.id === activeId) : null;
-	const { t } = useTranslation();
+	useTranslation();
 
 	return (
 		<DndContext

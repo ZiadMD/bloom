@@ -2,7 +2,7 @@ import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GithubIcon } from "../icons";
 import { SettingRow } from "./SettingRow";
-import { useTranslation } from "../i18n";
+import { t, useTranslation } from "../i18n";
 
 interface AboutTabProps {
 	appVersion: string;
@@ -31,8 +31,7 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
-	const { t } = useTranslation();
-
+	useTranslation();
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
 			case "checking":
@@ -60,19 +59,26 @@ export function AboutTab({
 	const getExportLabel = () => {
 		if (exportStatus === "exporting") return t("settings.about.exporting");
 		if (exportStatus === "success") return t("settings.about.exported");
+		if (exportStatus === "error") return t("ui.aboutTab.exportFailedTryAgain");
 		return t("settings.about.export");
 	};
 
 	const getImportLabel = () => {
 		if (importStatus === "importing") return t("settings.about.importing");
 		if (importStatus === "success") return t("settings.about.imported");
+		if (importStatus === "error") return t("ui.aboutTab.importFailedCheckTheFileAndTryAgain");
 		return t("settings.about.import");
 	};
 
 	return (
 		<div className="about-tab-container">
 			<div className="about-header">
-				<img src="/bloom.png" className="about-logo" alt="Bloom Logo" draggable={false} />
+				<img
+					src="/bloom.png"
+					className="about-logo"
+					alt={t("ui.aboutTab.bloomLogo")}
+					draggable={false}
+				/>
 				<h1 className="about-title">Bloom</h1>
 				<p className="about-version">{t("settings.about.version", { version: appVersion })}</p>
 				<p className="about-credit">
@@ -84,7 +90,7 @@ export function AboutTab({
 						title={t("settings.about.authorTitle")}
 					>
 						<GithubIcon size={12} />
-						<span>sehaz</span>
+						<span>{t("ui.aboutTab.sehaz")}</span>
 					</button>
 				</p>
 			</div>
@@ -92,6 +98,7 @@ export function AboutTab({
 			<div className="setting-group-label">{t("settings.groups.updates")}</div>
 			<div className="setting-group">
 				<SettingRow
+					previewId="auto-update"
 					icon={Download}
 					label={t("settings.about.autoUpdate")}
 					desc={t("settings.about.autoUpdateDesc")}

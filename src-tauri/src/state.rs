@@ -2,7 +2,7 @@ use crate::types::{AppInfo, IntRect, SystemCommand};
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{
-    atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32},
+    atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicIsize, AtomicU32},
     Mutex, OnceLock,
 };
 use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
@@ -13,6 +13,8 @@ pub static DOCK_APPBAR_REGISTERED: AtomicBool = AtomicBool::new(false);
 pub static CURRENT_DOCK_OVERLAP: AtomicI32 = AtomicI32::new(-1);
 pub static CURRENT_NOTCH_OVERLAP: AtomicI32 = AtomicI32::new(-1);
 pub static NATIVE_TASKBAR_HIDDEN: AtomicBool = AtomicBool::new(false);
+/// A scoped native tray operation temporarily exposes Explorer's UI to UIA.
+pub static TRAY_INTERACTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Set first on every quit/restart path. While windows and webviews are torn
 /// down, Tauri's window table is mutably borrowed; a window call arriving then
 /// (from the mouse hook or a background loop) panics with "RefCell already
@@ -20,6 +22,8 @@ pub static NATIVE_TASKBAR_HIDDEN: AtomicBool = AtomicBool::new(false);
 pub static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 pub static DOCK_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
+/// Expanded bar geometry, independent of the animated hit area and previews.
+pub static DOCK_OVERLAP_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
 pub static NOTCH_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
 pub static DOCK_IS_HOVERED: AtomicBool = AtomicBool::new(false);
 pub static NOTCH_IS_HOVERED: AtomicBool = AtomicBool::new(false);
@@ -27,6 +31,14 @@ pub static NOTCH_IS_HOVERED: AtomicBool = AtomicBool::new(false);
 /// smart/peek mode the notch must stay click-through even over its footprint.
 pub static NOTCH_IS_VISIBLE: AtomicBool = AtomicBool::new(true);
 pub static MENU_IS_OPEN: AtomicBool = AtomicBool::new(false);
+/// A dock popup deliberately dismissed Start. Keep only this interaction usable
+/// if dismissing the shell reveals a fullscreen app underneath it.
+pub static DOCK_SHELL_INTERACTION: AtomicBool = AtomicBool::new(false);
+/// Start may dismiss itself on right-button down before the webview opens its menu.
+pub static DOCK_START_PRESS_MS: AtomicI64 = AtomicI64::new(0);
+// The dock window's handle, for the mouse hook to tell whether a press lands
+// on the dock (which closes its own menus) or outside it.
+pub static DOCK_HWND: AtomicIsize = AtomicIsize::new(0);
 pub static MENU_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
 pub static ICON_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 
@@ -38,8 +50,11 @@ pub static CURRENT_BRIGHTNESS: AtomicU32 = AtomicU32::new(50);
 pub static CURRENT_VOLUME: AtomicU32 = AtomicU32::new(50);
 pub static LAST_BRIGHTNESS_CHANGE: AtomicI64 = AtomicI64::new(0);
 pub static ANY_MEDIA_PLAYING: AtomicBool = AtomicBool::new(false);
-pub static LAST_START_TOGGLE_MS: AtomicI64 = AtomicI64::new(0);
+// Whether the Start menu was open when the left button last went down,
+// recorded by the mouse hook before Start can react to the press.
+pub static START_OPEN_AT_PRESS: AtomicBool = AtomicBool::new(false);
 pub static OVERLAY_IN_SPLASH: AtomicBool = AtomicBool::new(false);
+pub static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 pub static CURRENT_FOREGROUND_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 pub static CURRENT_FOREGROUND_MAXIMIZED: AtomicBool = AtomicBool::new(false);
 
@@ -86,3 +101,6 @@ pub static PROCESS_NAME_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLo
 pub static THUMBNAIL_CACHE: OnceLock<Mutex<HashMap<isize, (String, i64)>>> = OnceLock::new();
 pub static FOCUS_TIMESTAMPS: OnceLock<Mutex<HashMap<isize, i64>>> = OnceLock::new();
 pub static SETTINGS_CACHE: OnceLock<Mutex<HashMap<String, serde_json::Value>>> = OnceLock::new();
+/// Serialize read/modify/write settings commands from all four webviews.
+pub static SETTINGS_FILE_LOCK: Mutex<()> = Mutex::new(());
+pub static PINNED_FILE_LOCK: Mutex<()> = Mutex::new(());

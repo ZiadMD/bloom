@@ -15,19 +15,33 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 }
 ```
 
+## Language
+
+`bloom-language` is a string: `"system"` (default), `"en"`, `"ru"`, `"fr"`, `"es"`, `"pt-BR"`, or `"pt-PT"`. Set it in Settings → General → Language. Changes apply live across the webviews and native tray. Removing the key restores System default. Unsupported languages use English. Exact regional matches are preferred; Brazilian and European Portuguese are distinct. Missing or invalid translated messages use English individually, and no network connection is needed. Starter language catalogs may be empty until contributors translate them.
+
 ## Settings Keys
 
 ### Dock
 
-| Key                             | Type                             | Default     | Description                                                                                                                                                                      |
-| ------------------------------- | -------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bloom-dock-enabled`            | `"true"` / `"false"`             | `"true"`    | Show or hide the Bloom Dock (taskbar replacement).                                                                                                                               |
-| `bloom-dock-mode`               | `"fixed"` / `"smart"` / `"peek"` | `"smart"`   | Dock visibility behavior. **fixed** = always visible as AppBar. **smart** = auto-hide when overlapped by fullscreen apps. **peek** = hidden until cursor approaches bottom edge. |
-| `bloom-dock-preview-enabled`    | `"true"` / `"false"`             | `"true"`    | Show window thumbnail previews when hovering dock icons.                                                                                                                         |
-| `bloom-dock-icon-only`          | `"true"` / `"false"`             | `"false"`   | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
-| `bloom-start-icon`              | icon key / `custom:<data URI>`   | `"default"` | Start button icon: `default`, `bloom-colorful`, `bloom-golden`, `bloom-biscuit`, `windows`, or `custom:` followed by an uploaded image's data URI.                               |
-| `bloom-dock-adaptive`           | `"true"` / `"false"`             | `"false"`   | Fixed dock only. Stretch the dock to full width like a traditional taskbar while a window is maximized, and contract back when it's restored.                                    |
-| `bloom-dock-win-number-enabled` | `"true"` / `"false"`             | `"true"`    | When the taskbar is replaced, Win+1 through Win+9 activate the matching pinned dock app (focus/minimize if running, launch otherwise) instead of the native taskbar slots.       |
+| Key                                | Type                             | Default       | Description                                                                                                                                                                      |
+| ---------------------------------- | -------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bloom-dock-enabled`               | `"true"` / `"false"`             | `"true"`      | Show or hide the Bloom Dock (taskbar replacement).                                                                                                                               |
+| `bloom-dock-mode`                  | `"fixed"` / `"smart"` / `"peek"` | `"smart"`     | Dock visibility behavior. **fixed** = always visible as AppBar. **smart** = auto-hide when overlapped by fullscreen apps. **peek** = hidden until cursor approaches bottom edge. |
+| `bloom-dock-edge-delay`            | milliseconds `"0"`–`"2000"`      | `"200"`       | In smart/peek mode, how long the cursor must rest against the bottom screen edge before the dock appears. `"0"` reveals instantly.                                               |
+| `bloom-dock-preview-enabled`       | `"true"` / `"false"`             | `"true"`      | Show window thumbnail previews when hovering dock icons.                                                                                                                         |
+| `bloom-dock-show-background-apps`  | `"true"` / `"false"`             | `"true"`      | Keep apps in the dock after they close to the system tray. When disabled, unpinned tray-only apps disappear and pinned apps lose their gray dot.                                 |
+| `bloom-dock-icon-only`             | `"true"` / `"false"`             | `"false"`     | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
+| `bloom-dock-separator-enabled`     | `"true"` / `"false"`             | `"true"`      | Show a divider between pinned and unpinned dock apps when unpinned apps are present. Unpinned apps remain on the right when disabled.                                            |
+| `bloom-start-icon`                 | icon key / `custom:<data URI>`   | `"default"`   | Start button icon: `default`, `bloom-colorful`, `bloom-golden`, `bloom-biscuit`, `windows`, or `custom:` followed by an uploaded image's data URI.                               |
+| `bloom-dock-task-view`             | `"true"` / `"false"`             | `"false"`     | Show a Task View button beside Start that opens Task View, like the taskbar's. Right-click it to hide it again.                                                                  |
+| `bloom-dock-adaptive`              | `"true"` / `"false"`             | `"false"`     | Fixed dock only. Stretch the dock to full width like a traditional taskbar while a window is maximized, and contract back when it's restored.                                    |
+| `bloom-dock-win-number-enabled`    | `"true"` / `"false"`             | `"true"`      | When the taskbar is replaced, Win+1 through Win+9 activate the matching pinned dock app (focus/minimize if running, launch otherwise) instead of the native taskbar slots.       |
+| `bloom-dock-extras-position`       | `"off"` / `"left"` / `"right"`   | `"off"`       | Show a dock extras section with drives, folders and the Recycle Bin beside the app icons, on the left or right side of the dock.                                                 |
+| `bloom-dock-extras-drives`         | `"true"` / `"false"`             | `"true"`      | Show fixed, removable (with media) and connected mapped network drives in the dock extras. Empty card readers and unloaded discs are hidden.                                     |
+| `bloom-dock-extras-hidden-drives`  | comma-separated letters          | `""`          | Drives left out of the dock extras, e.g. `"D,E"`. Drives not listed appear, including newly connected ones. Right-clicking a drive and choosing Remove from Dock adds it here. |
+| `bloom-dock-extras-recycle-bin`    | `"true"` / `"false"`             | `"true"`      | Show the Recycle Bin in the dock extras. The icon reflects whether the bin holds anything.                                                                                       |
+| `bloom-dock-extras-folders`        | comma-separated ids              | `"downloads"` | Known folders in the dock extras: any of `desktop`, `downloads`, `documents`, `pictures`, `music`, `videos`, or `"none"` for no folders.                                         |
+| `bloom-dock-extras-custom-folders` | JSON array                       | `"[]"`        | User-added folders, e.g. `[{"name":"Projects","path":"D:\\Projects"}]`. Folders that no longer exist are skipped until they return.                                              |
 
 ### Notch
 
@@ -50,11 +64,25 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 
 ### Modules
 
-| Key                         | Type                 | Default  | Description                                                           |
-| --------------------------- | -------------------- | -------- | --------------------------------------------------------------------- |
-| `bloom-calendar-enabled`    | `"true"` / `"false"` | `"true"` | Enable calendar/timer mode in the notch.                              |
-| `bloom-music-mode-enabled`  | `"true"` / `"false"` | `"true"` | Enable interactive music media widget.                                |
-| `bloom-music-compact-notch` | `"true"` / `"false"` | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch. |
+| Key                         | Type                              | Default  | Description                                                                                              |
+| --------------------------- | --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `bloom-calendar-enabled`    | `"true"` / `"false"`              | `"true"` | Enable calendar/timer mode in the notch.                                                                 |
+| `bloom-calendar-monday-first` | `"true"` / `"false"` | `"false"` | Start calendar weeks on Monday; Sunday remains the default. Grid padding and notch height follow this setting. |
+| `bloom-notch-command-center-enabled` | `"true"` / `"false"` | `"true"` | Show the Command Center panel in the notch. |
+| `bloom-notch-devices-enabled` | `"true"` / `"false"` | `"false"` | Show the Connected devices panel in the notch. Settings keeps at least one of the panels (calendar, Command Center, Connected devices) on; if all are off, the notch shows Command Center. |
+| `bloom-music-mode-enabled`  | `"true"` / `"false"`              | `"true"` | Enable interactive music media widget.                                                                   |
+| `bloom-music-compact-notch` | `"true"` / `"false"`              | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch.                                    |
+| `bloom-notch-remember-panel` | `"true"` / `"false"` | `"true"` | Click opens the last-used panel when on; when off, click opens `bloom-notch-default-panel`. |
+| `bloom-notch-default-panel` | `"calendar"` / `"command-center"` / `"devices"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If that panel is turned off, the first panel that's on opens instead. |
+| `bloom-notch-last-panel`    | `"calendar"` / `"command-center"` / `"devices"` | (unset)  | Last panel the notch was left on, saved by Bloom while panel memory is on. |
+| `bloom-notch-click-to-open` | `"true"` / `"false"` | (legacy) | Old setting read only when `bloom-notch-remember-panel` is absent; `"false"` now selects fixed-panel behavior. |
+| `bloom-device-looks` | JSON object, device name → `"headphones"` / `"round-buds"` / `"stem-buds"` / `"neckband"` / `"speaker"` for Bluetooth audio; `"headphones-wired"` / `"earbuds-usbc"` / `"earbuds-jack"` / `"speaker"` / `"microphone"` for wired and USB audio | (unset) | The drawing an audio device's connection popup uses, picked under "Looks like" in the notch's Connected devices panel (or, for Bluetooth, its Bluetooth view). Devices without a pick are guessed from their name and class. |
+
+### Shelf
+
+| Key                   | Type                 | Default   | Description                                                                                                    |
+| --------------------- | -------------------- | --------- | -------------------------------------------------------------------------------------------------------------- |
+| `bloom-shelf-persist` | `"true"` / `"false"` | `"false"` | Keep notch shelf items across restarts. Off = items are cleared when Bloom closes. Max 10 items, newest first. |
 
 ### Music Appearance
 
@@ -76,6 +104,8 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 | `bloom-brightness-edge-enabled`    | `"true"` / `"false"` | `"true"` | Trigger brightness HUD by hovering the right screen edge.                |
 
 ### Appearance
+
+`bloom-edge-shine-enabled` (`"true"` / `"false"`, default `"true"`) controls the reflective hairline around both the dock and notch. Change it with **Appearance → Display → Edge shine**; it applies immediately to both windows.
 
 | Key                      | Type                                             | Default     | Description                                                                                                                                                 |
 | ------------------------ | ------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -102,15 +132,14 @@ Example:
 
 ### System
 
-| Key                            | Type                     | Default    | Description                                                                                             |
-| ------------------------------ | ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------- |
-| `bloom-scale`                  | float string             | `"1.0"`    | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area.    |
-| `bloom-low-battery-threshold`  | integer string           | `"20"`     | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                         |
-| `bloom-auto-update`            | `"true"` / `"false"`     | `"false"`  | Check for and download updates automatically on startup.                                                |
-| `bloom-show-update-indicator`  | `"true"` / `"false"`     | `"true"`   | Show a green dot on the notch when an update is available.                                              |
-| `bloom-announcement-dismissed` | announcement id          | `""`       | ID of the last dismissed in-app announcement (published via `website/public/announcements.json`).       |
-| `bloom-time-format-24h`        | `"true"` / `"false"`     | `"false"`  | Use 24-hour clock format in the notch. When `"false"`, displays 12-hour format with AM/PM.              |
-| `bloom-language`               | `"system"` / locale code | `"system"` | UI language. `"system"` follows the Windows display language when supported. Available: `"en"`, `"ru"`. |
+| Key                            | Type                 | Default   | Description                                                                                          |
+| ------------------------------ | -------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| `bloom-scale`                  | float string         | `"1.0"`   | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area. |
+| `bloom-low-battery-threshold`  | integer string       | `"20"`    | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                      |
+| `bloom-auto-update`            | `"true"` / `"false"` | `"false"` | Check for and download updates automatically on startup.                                             |
+| `bloom-show-update-indicator`  | `"true"` / `"false"` | `"true"`  | Show a green dot on the notch when an update is available.                                           |
+| `bloom-announcement-dismissed` | announcement id      | `""`      | ID of the last dismissed in-app announcement (published via `website/public/announcements.json`).    |
+| `bloom-time-format-24h`        | `"true"` / `"false"` | `"false"` | Use 24-hour clock format in the notch. When `"false"`, displays 12-hour format with AM/PM.           |
 
 ### Internal (Do Not Edit Manually)
 
