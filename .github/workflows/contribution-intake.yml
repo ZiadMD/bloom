@@ -9,7 +9,10 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # Labels and comments on a pull request go through the issues API, but on a
+  # PR they need pull-requests: write. Safe here: the job only runs trusted
+  # default-branch code and never checks out the pull request.
+  pull-requests: write
 
 concurrency:
   group: contribution-intake-${{ github.event.issue.number || github.event.pull_request.number }}
