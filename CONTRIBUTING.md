@@ -53,6 +53,10 @@ Do not run a separate Vite dev server alongside Tauri.
 | `bun run tauri build` | Build the app |
 | `bun run format` | Format frontend and Rust |
 
+## Translations
+
+You can help without coding: send English phrases and your translations through the translation issue form, or edit a partial language file directly on GitHub. Missing messages safely use English. See [Help translate Bloom](TRANSLATING.md) for the contributor guide and developer checks.
+
 ## Pull requests
 
 Branch from current main and keep each PR focused. Link an issue when one exists; use `Closes #123` only when the whole issue is resolved. Describe partial work as `Related to #123`.

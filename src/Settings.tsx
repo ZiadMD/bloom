@@ -1,3 +1,4 @@
+import { t, useTranslation, initI18n } from "./i18n";
 import { StrictMode, useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -23,27 +24,30 @@ import "./Settings.css";
 
 const appWindow = getCurrentWebviewWindow();
 
-const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
-	{ id: "general", label: "General", icon: Settings },
-	{ id: "appearance", label: "Appearance", icon: Palette },
-	{ id: "notch", label: "Notch", icon: PanelTop },
-	{ id: "dock", label: "Dock", icon: Monitor },
-	{ id: "overlays", label: "Overlays", icon: Layers },
-	{ id: "integrations", label: "Integrations", icon: Plug },
-	{ id: "about", label: "About", icon: Info }
+const TABS: { id: SettingsTab; icon: typeof Settings }[] = [
+	{ id: "general", icon: Settings },
+	{ id: "appearance", icon: Palette },
+	{ id: "notch", icon: PanelTop },
+	{ id: "dock", icon: Monitor },
+	{ id: "overlays", icon: Layers },
+	{ id: "integrations", icon: Plug },
+	{ id: "about", icon: Info }
 ];
 
-const TAB_COPY: Record<SettingsTab, string> = {
-	general: "The essentials for how Bloom starts and runs.",
-	appearance: "Make every surface feel at home on your desktop.",
-	notch: "Choose what appears at the top of your screen.",
-	dock: "Shape the taskbar replacement around your workflow.",
-	overlays: "Keep quick controls visible only when you need them.",
-	integrations: "Connect your apps and services to Bloom.",
-	about: "Version, updates and your settings data."
-};
+function getTAB_COPY(): Record<SettingsTab, string> {
+	return {
+		general: t("ui.settings.theEssentialsForHowBloomStartsAndRuns"),
+		appearance: t("ui.settings.makeEverySurfaceFeelAtHomeOnYourDesktop"),
+		notch: t("ui.settings.chooseWhatAppearsAtTheTopOfYourScreen"),
+		dock: t("ui.settings.shapeTheTaskbarReplacementAroundYourWorkflow"),
+		overlays: t("ui.settings.keepQuickControlsVisibleOnlyWhenYouNeedThem"),
+		integrations: t("ui.settings.connectYourAppsAndServicesToBloom"),
+		about: t("ui.settings.versionUpdatesAndYourSettingsData")
+	};
+}
 
 function SettingsApp() {
+	useTranslation();
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 	const [previewFocus, setPreviewFocus] = useState("");
 	const contentRef = useRef<HTMLDivElement>(null);
@@ -76,7 +80,9 @@ function SettingsApp() {
 			event.preventDefault();
 			return closeSettings();
 		});
-		return () => { void unlisten.then((fn) => fn()); };
+		return () => {
+			void unlisten.then((fn) => fn());
+		};
 	}, [closeSettings]);
 	const { announcement, dismissed, dismiss } = useAnnouncement();
 
@@ -121,17 +127,20 @@ function SettingsApp() {
 		<div className="settings-container" style={{ zoom: settings.scale }} inert={isClosing}>
 			<div className="title-bar" data-tauri-drag-region>
 				<span className="title-text" data-tauri-drag-region>
-					Settings
+					{t("settings.title")}
 				</span>
-				<button className="close-btn" onClick={handleClose} title="Close Settings">
+				<button className="close-btn" onClick={handleClose} title={t("settings.closeTitle")}>
 					<X size={12} strokeWidth={1.5} className="close-btn-icon" />
 				</button>
 			</div>
 
 			<div className="settings-body">
 				<div className="settings-sidebar">
-					<div className="settings-sidebar-intro"><strong>Bloom</strong><span>Make it yours</span></div>
-					{TABS.map(({ id, label, icon: Icon }) => (
+					<div className="settings-sidebar-intro">
+						<strong>Bloom</strong>
+						<span>{t("ui.settings.makeItYours")}</span>
+					</div>
+					{TABS.map(({ id, icon: Icon }) => (
 						<button
 							key={id}
 							className={`sidebar-tab ${activeTab === id ? "active" : ""}`}
@@ -140,38 +149,41 @@ function SettingsApp() {
 							<div className="sidebar-tab-icon">
 								<Icon size={14} strokeWidth={1.5} />
 							</div>
-							<span>{label}</span>
+							<span>{t(`settings.tabs.${id}`)}</span>
 						</button>
 					))}
 				</div>
 
-				<div className="settings-content" ref={contentRef} onChangeCapture={(event) => {
-					const target = event.target as HTMLElement;
-					const row = target.closest(".setting-item");
-					let label = row?.querySelector(".setting-label")?.textContent;
-					if (!label && target.closest(".settings-disclosure-standalone")) label = "Status Widgets";
-					if (activeTab === "overlays" && label === "Show on Edge Hover") {
-						const edgeRows = Array.from(contentRef.current?.querySelectorAll(".setting-item") ?? []).filter(
-							(item) => item.querySelector(".setting-label")?.textContent === label
-						);
-						label = row === edgeRows[edgeRows.length - 1] && edgeRows.length > 1 ? "Brightness Edge Hover" : "Volume Edge Hover";
-					}
-					if (label) setPreviewFocus(activeTab + ":" + label + ":" + Date.now());
-				}} onClickCapture={(event) => {
-					const label = (event.target as HTMLElement).closest(".setting-item")?.querySelector(".setting-label")?.textContent;
-					if (label === "Start Menu Icon" || label === "Weather Status") {
-						setPreviewFocus(activeTab + ":" + label + ":" + Date.now());
-					}
-				}}>
+				<div
+					className="settings-content"
+					ref={contentRef}
+					onChangeCapture={(event) => {
+						const target = event.target as HTMLElement;
+						const id =
+							target.closest<HTMLElement>("[data-preview-id]")?.dataset.previewId ??
+							(target.closest(".settings-disclosure-standalone") ? "status-widgets" : undefined);
+						if (id) setPreviewFocus(activeTab + ":" + id + ":" + Date.now());
+					}}
+					onClickCapture={(event) => {
+						const id = (event.target as HTMLElement).closest<HTMLElement>("[data-preview-id]")
+							?.dataset.previewId;
+						if (id === "start-menu-icon" || id === "weather-status") {
+							setPreviewFocus(activeTab + ":" + id + ":" + Date.now());
+						}
+					}}
+				>
 					{settings.saveError && (
 						<div className="settings-save-error" role="alert">
 							<span>
-								Changes could not be saved. Your saved settings have been restored.
+								{t("ui.settings.changesCouldNotBeSavedYourSavedSettingsHaveBeen")}
 								{settings.saveErrorDetail && (
 									<small style={{ display: "block" }}>{settings.saveErrorDetail}</small>
 								)}
 							</span>
-							<button onClick={settings.dismissSaveError} aria-label="Dismiss save error">
+							<button
+								onClick={settings.dismissSaveError}
+								aria-label={t("ui.settings.dismissSaveError")}
+							>
 								<X size={14} strokeWidth={2} />
 							</button>
 						</div>
@@ -190,27 +202,29 @@ function SettingsApp() {
 									className="announcement-banner-link"
 									onClick={() => openUrl(announcement.url!)}
 								>
-									Learn more
+									{t("common.learnMore")}
 								</button>
 							)}
-							<button className="announcement-banner-close" onClick={dismiss} title="Dismiss">
+							<button
+								className="announcement-banner-close"
+								onClick={dismiss}
+								title={t("common.dismiss")}
+							>
 								<X size={12} strokeWidth={2.2} />
 							</button>
 						</div>
 					)}
 					<div className="settings-page-heading">
-						<h1>{TABS.find((tab) => tab.id === activeTab)?.label}</h1>
-						<p>{TAB_COPY[activeTab]}</p>
+						<h1>{t(`settings.tabs.${activeTab}`)}</h1>
+						<p>{getTAB_COPY()[activeTab]}</p>
 					</div>
-					<FeaturePreview
-						tab={activeTab}
-						settings={settings}
-						focus={previewFocus}
-					/>
+					<FeaturePreview tab={activeTab} settings={settings} focus={previewFocus} />
 					{activeTab === "general" && (
 						<GeneralTab
 							autostart={settings.autostart}
 							toggleAutostart={settings.toggleAutostart}
+							language={settings.language}
+							handleLanguageChange={settings.handleLanguageChange}
 							timeFormat24h={settings.timeFormat24h}
 							toggleTimeFormat24h={settings.toggleTimeFormat24h}
 							showUpdateIndicator={settings.showUpdateIndicator}
@@ -220,6 +234,11 @@ function SettingsApp() {
 							restartBloom={settings.restartBloom}
 							resetToDefaults={settings.resetToDefaults}
 							quitBloom={settings.quitBloom}
+							openOnboarding={async () => {
+								if (!(await flushPendingSaves()))
+									throw new Error("Save your settings successfully before opening setup.");
+								await invoke("open_onboarding");
+							}}
 						/>
 					)}
 					{activeTab === "integrations" && <IntegrationsTab agentAlertsEnabled={settings.agentAlertsEnabled} onToggleAgentAlerts={settings.toggleAgentAlerts} />}
@@ -301,6 +320,8 @@ function SettingsApp() {
 							handleDockEdgeDelayChange={settings.handleDockEdgeDelayChange}
 							dockPreviewEnabled={settings.dockPreviewEnabled}
 							toggleDockPreview={settings.toggleDockPreview}
+							dockShowBackgroundApps={settings.dockShowBackgroundApps}
+							toggleDockShowBackgroundApps={settings.toggleDockShowBackgroundApps}
 							dockIconOnly={settings.dockIconOnly}
 							toggleDockIconOnly={settings.toggleDockIconOnly}
 							dockSeparatorEnabled={settings.dockSeparatorEnabled}
@@ -360,6 +381,8 @@ function SettingsApp() {
 		</div>
 	);
 }
+
+initI18n();
 
 createRoot(document.getElementById("root") as HTMLElement).render(
 	<StrictMode>

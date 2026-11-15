@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useEffect, useState, type ChangeEvent, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -5,6 +6,7 @@ import {
 	Eye,
 	EyeOff,
 	Circle,
+	Layers,
 	Columns2,
 	Maximize2,
 	Keyboard,
@@ -79,11 +81,11 @@ function DrivePicker({
 }
 
 const START_ICON_PRESETS = [
-	{ key: "default", src: "/bloom.png", label: "Bloom" },
-	{ key: "bloom-colorful", src: "/bloom-colorful.png", label: "Colorful" },
-	{ key: "bloom-golden", src: "/bloom-golden.png", label: "Golden" },
-	{ key: "bloom-biscuit", src: "/bloom-biscuit.png", label: "Orange" },
-	{ key: "windows", src: "/windows-11.png", label: "Windows" }
+	{ key: "default", src: "/bloom.png", labelKey: "settings.dock.iconBloom" },
+	{ key: "bloom-colorful", src: "/bloom-colorful.png", labelKey: "settings.dock.iconColorful" },
+	{ key: "bloom-golden", src: "/bloom-golden.png", labelKey: "settings.dock.iconGolden" },
+	{ key: "bloom-biscuit", src: "/bloom-biscuit.png", labelKey: "settings.dock.iconOrange" },
+	{ key: "windows", src: "/windows-11.png", labelKey: "settings.dock.iconWindows" }
 ];
 
 const startIconTileStyle = (active: boolean): CSSProperties => ({
@@ -110,6 +112,8 @@ interface DockTabProps {
 	handleDockEdgeDelayChange: (val: number) => void;
 	dockPreviewEnabled: boolean;
 	toggleDockPreview: () => void;
+	dockShowBackgroundApps: boolean;
+	toggleDockShowBackgroundApps: () => void;
 	dockIconOnly: boolean;
 	toggleDockIconOnly: () => void;
 	dockSeparatorEnabled: boolean;
@@ -146,6 +150,8 @@ export function DockTab({
 	handleDockEdgeDelayChange,
 	dockPreviewEnabled,
 	toggleDockPreview,
+	dockShowBackgroundApps,
+	toggleDockShowBackgroundApps,
 	dockIconOnly,
 	toggleDockIconOnly,
 	dockSeparatorEnabled,
@@ -172,6 +178,8 @@ export function DockTab({
 	startIcon,
 	handleStartIconChange
 }: DockTabProps) {
+	useTranslation();
+
 	const handleStartIconUpload = (e: ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		if (!file) return;
@@ -185,9 +193,14 @@ export function DockTab({
 
 	return (
 		<>
-			<div className="setting-group-label">Dock</div>
+			<div className="setting-group-label">{t("settings.groups.dock")}</div>
 			<div className="setting-group">
-				<SettingRow icon={Monitor} label="Bloom Dock" desc="Replace Windows taskbar">
+				<SettingRow
+					previewId="bloom-dock"
+					icon={Monitor}
+					label={t("settings.dock.enabled")}
+					desc={t("settings.dock.enabledDesc")}
+				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={dockEnabled} onChange={toggleDock} />
 						<span className="slider"></span>
@@ -197,29 +210,33 @@ export function DockTab({
 				{dockEnabled && (
 					<>
 						<SettingRow
+							previewId="behavior"
 							icon={dockMode === "fixed" ? EyeOff : Eye}
-							label="Behavior"
-							desc="Choose how the dock appears"
+							label={t("settings.dock.behavior")}
+							desc={t("settings.dock.behaviorDesc")}
 						>
 							<select
 								className="settings-select"
 								value={dockMode}
 								onChange={(e) => setDockModeValue(e.target.value)}
 							>
-								<option value="fixed">Fixed</option>
-								<option value="smart">Smart</option>
-								<option value="peek">Peek</option>
+								<option value="fixed">{t("common.behavior.fixed")}</option>
+								<option value="smart">{t("common.behavior.smart")}</option>
+								<option value="peek">{t("common.behavior.peek")}</option>
 							</select>
 						</SettingRow>
 
 						{dockMode !== "fixed" && (
 							<SettingRow
+								previewId="peek-delay"
 								icon={Timer}
-								label="Peek Delay"
+								label={t("settings.notch.peekDelay")}
 								desc={
 									dockEdgeDelay === 0
-										? "Reveal instantly on bottom-edge contact"
-										: `Rest on the bottom edge for ${dockEdgeDelay}ms to reveal`
+										? t("ui.dockTab.revealInstantlyOnBottomEdgeContact")
+										: t("ui.dockTab.restOnTheBottomEdgeForDockedgedelayMsToReveal", {
+												dockEdgeDelay: dockEdgeDelay
+											})
 								}
 							>
 								<input
@@ -234,14 +251,41 @@ export function DockTab({
 							</SettingRow>
 						)}
 
-						<SettingRow icon={Eye} label="Show App Previews" desc="Show window thumbnails on hover">
+						<SettingRow
+							previewId="show-app-previews"
+							icon={Eye}
+							label={t("settings.dock.previews")}
+							desc={t("settings.dock.previewsDesc")}
+						>
 							<label className="toggle-switch">
 								<input type="checkbox" checked={dockPreviewEnabled} onChange={toggleDockPreview} />
 								<span className="slider"></span>
 							</label>
 						</SettingRow>
 
-						<SettingRow icon={Circle} label="Icon Only" desc="Remove icon background and padding">
+						<SettingRow
+							previewId="show-background-apps"
+							icon={Layers}
+							label={t("ui.dockTab.showBackgroundApps")}
+							desc={t("ui.dockTab.keepAppsInTheDockWhenTheyCloseToThe")}
+						>
+							<label className="toggle-switch">
+								<input
+									type="checkbox"
+									aria-label={t("ui.dockTab.showBackgroundApps")}
+									checked={dockShowBackgroundApps}
+									onChange={toggleDockShowBackgroundApps}
+								/>
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						<SettingRow
+							previewId="icon-only"
+							icon={Circle}
+							label={t("settings.dock.iconOnly")}
+							desc={t("settings.dock.iconOnlyDesc")}
+						>
 							<label className="toggle-switch">
 								<input type="checkbox" checked={dockIconOnly} onChange={toggleDockIconOnly} />
 								<span className="slider"></span>
@@ -249,9 +293,10 @@ export function DockTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="app-separator"
 							icon={Columns2}
-							label="App Separator"
-							desc="Show a divider before unpinned apps"
+							label={t("ui.dockTab.appSeparator")}
+							desc={t("ui.dockTab.showADividerBeforeUnpinnedApps")}
 						>
 							<label className="toggle-switch">
 								<input
@@ -263,7 +308,12 @@ export function DockTab({
 							</label>
 						</SettingRow>
 
-						<SettingRow icon={Copy} label="Task View" desc="Show the Task View button beside Start">
+						<SettingRow
+							previewId="task-view"
+							icon={Copy}
+							label={t("ui.dock.taskView")}
+							desc={t("ui.dockTab.showTheTaskViewButtonBesideStart")}
+						>
 							<label className="toggle-switch">
 								<input type="checkbox" checked={dockTaskView} onChange={toggleDockTaskView} />
 								<span className="slider"></span>
@@ -271,9 +321,10 @@ export function DockTab({
 						</SettingRow>
 
 						<SettingRow
+							previewId="win-number-shortcuts"
 							icon={Keyboard}
-							label="Win+Number Shortcuts"
-							desc="Open pinned apps with Win+1 through Win+9"
+							label={t("settings.dock.winNumber")}
+							desc={t("settings.dock.winNumberDesc")}
 							divider={dockMode === "fixed"}
 						>
 							<label className="toggle-switch">
@@ -288,9 +339,10 @@ export function DockTab({
 
 						{dockMode === "fixed" && (
 							<SettingRow
+								previewId="adaptive-mode"
 								icon={Maximize2}
-								label="Adaptive Mode"
-								desc="Stretch to full width when a window is maximized"
+								label={t("settings.dock.adaptive")}
+								desc={t("settings.dock.adaptiveDesc")}
 								divider={false}
 							>
 								<label className="toggle-switch">
@@ -301,28 +353,33 @@ export function DockTab({
 						)}
 
 						<SettingRow
+							previewId="dock-extras"
 							icon={LayoutPanelLeft}
-							label="Dock Extras"
-							desc="Show drives, folders and the Recycle Bin beside the apps"
+							label={t("ui.dockTab.dockExtras")}
+							desc={t("ui.dockTab.showDrivesFoldersAndTheRecycleBinBesideTheApps")}
 						>
 							<select
 								className="settings-select"
 								value={dockExtrasPosition}
 								onChange={(e) => handleDockExtrasPositionChange(e.target.value)}
 							>
-								<option value="off">Off</option>
-								<option value="left">Left</option>
-								<option value="right">Right</option>
+								<option value="off">{t("notch.commandCenter.off")}</option>
+								<option value="left">{t("common.left")}</option>
+								<option value="right">{t("common.right")}</option>
 							</select>
 						</SettingRow>
 
 						{dockExtrasPosition !== "off" && (
 							<details className="settings-disclosure">
-								<summary>Manage dock extras <span>Drives, folders and Recycle Bin</span></summary>
+								<summary>
+									{t("ui.dockTab.manageDockExtras")}
+									<span>{t("ui.dockTab.drivesFoldersAndRecycleBin")}</span>
+								</summary>
 								<SettingRow
+									previewId="drives"
 									icon={HardDrive}
-									label="Drives"
-									desc="Fixed, removable and connected network drives"
+									label={t("ui.dockTab.drives")}
+									desc={t("ui.dockTab.fixedRemovableAndConnectedNetworkDrives")}
 									divider={!dockExtrasDrives}
 								>
 									<label className="toggle-switch">
@@ -337,7 +394,11 @@ export function DockTab({
 
 								{dockExtrasDrives && (
 									<>
-										<div className="setting-item" style={{ paddingTop: 0, paddingBottom: 12 }}>
+										<div
+											data-preview-id="dock-extras"
+											className="setting-item"
+											style={{ paddingTop: 0, paddingBottom: 12 }}
+										>
 											<DrivePicker
 												hiddenDrives={dockExtrasHiddenDrives}
 												onToggle={toggleDockExtrasDrive}
@@ -348,9 +409,10 @@ export function DockTab({
 								)}
 
 								<SettingRow
+									previewId="recycle-bin"
 									icon={Trash2}
-									label="Recycle Bin"
-									desc="Show the Recycle Bin in the extras"
+									label={t("ui.dockTab.recycleBin")}
+									desc={t("ui.dockTab.showTheRecycleBinInTheExtras")}
 								>
 									<label className="toggle-switch">
 										<input
@@ -363,6 +425,7 @@ export function DockTab({
 								</SettingRow>
 
 								<div
+									data-preview-id="dock-extras"
 									className="setting-item"
 									style={{ flexDirection: "column", alignItems: "flex-start", gap: "10px" }}
 								>
@@ -371,9 +434,9 @@ export function DockTab({
 											<FolderOpen size={14} strokeWidth={1.5} />
 										</div>
 										<div className="setting-info">
-											<span className="setting-label">Special Folders</span>
+											<span className="setting-label">{t("ui.dockTab.specialFolders")}</span>
 											<span className="setting-desc">
-												Pick the folders that appear in the extras
+												{t("ui.dockTab.pickTheFoldersThatAppearInTheExtras")}
 											</span>
 										</div>
 									</div>
@@ -403,6 +466,7 @@ export function DockTab({
 								<div className="setting-divider" />
 
 								<div
+									data-preview-id="dock-extras"
 									className="setting-item"
 									style={{ flexDirection: "column", alignItems: "flex-start", gap: "10px" }}
 								>
@@ -411,8 +475,10 @@ export function DockTab({
 											<FolderPlus size={14} strokeWidth={1.5} />
 										</div>
 										<div className="setting-info">
-											<span className="setting-label">Custom Folders</span>
-											<span className="setting-desc">Add any folder to the extras section</span>
+											<span className="setting-label">{t("ui.dockTab.customFolders")}</span>
+											<span className="setting-desc">
+												{t("ui.dockTab.addAnyFolderToTheExtrasSection")}
+											</span>
 										</div>
 									</div>
 									<div
@@ -432,7 +498,7 @@ export function DockTab({
 												<button
 													type="button"
 													className="extra-folder-remove"
-													title="Remove folder"
+													title={t("ui.dockTab.removeFolder")}
 													onClick={() => handleRemoveDockExtraFolder(folder.path)}
 												>
 													<X size={14} strokeWidth={2} />
@@ -445,7 +511,7 @@ export function DockTab({
 											onClick={handleAddDockExtraFolder}
 										>
 											<Plus size={13} strokeWidth={2} />
-											Add Folder...
+											{t("ui.dockTab.addFolder")}
 										</button>
 									</div>
 								</div>
@@ -454,6 +520,7 @@ export function DockTab({
 
 						<div className="setting-divider" />
 						<div
+							data-preview-id="start-menu-icon"
 							className="setting-item"
 							style={{ flexDirection: "column", alignItems: "flex-start", gap: "10px" }}
 						>
@@ -462,8 +529,8 @@ export function DockTab({
 									<Sparkles size={14} strokeWidth={1.5} />
 								</div>
 								<div className="setting-info">
-									<span className="setting-label">Start Menu Icon</span>
-									<span className="setting-desc">Choose the dock start button icon</span>
+									<span className="setting-label">{t("settings.dock.startIcon")}</span>
+									<span className="setting-desc">{t("settings.dock.startIconDesc")}</span>
 								</div>
 							</div>
 							<div
@@ -479,11 +546,11 @@ export function DockTab({
 										key={icon.key}
 										onClick={() => handleStartIconChange(icon.key)}
 										style={startIconTileStyle(startIcon === icon.key)}
-										title={icon.label}
+										title={t(icon.labelKey)}
 									>
 										<img
 											src={icon.src}
-											alt={icon.label}
+											alt={t(icon.labelKey)}
 											style={{ width: "100%", height: "100%", objectFit: "contain" }}
 											draggable={false}
 										/>
@@ -492,12 +559,12 @@ export function DockTab({
 								<div
 									onClick={() => document.getElementById("start-icon-file-input")?.click()}
 									style={startIconTileStyle(startIcon.startsWith("custom:"))}
-									title="Custom icon"
+									title={t("settings.dock.startIconCustom")}
 								>
 									{startIcon.startsWith("custom:") ? (
 										<img
 											src={startIcon.replace("custom:", "")}
-											alt="Custom"
+											alt={t("settings.dock.startIconCustom")}
 											style={{
 												width: "100%",
 												height: "100%",
@@ -514,7 +581,7 @@ export function DockTab({
 									<div
 										onClick={() => handleStartIconChange("default")}
 										style={startIconTileStyle(false)}
-										title="Reset to default"
+										title={t("settings.dock.startIconReset")}
 									>
 										<RotateCcw size={18} strokeWidth={1.5} />
 									</div>

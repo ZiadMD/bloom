@@ -23,6 +23,10 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 }
 ```
 
+## Language
+
+`bloom-language` is a string: `"system"` (default), `"en"`, `"ru"`, `"fr"`, `"es"`, `"pt-BR"`, or `"pt-PT"`. Set it in Settings → General → Language. Changes apply live across the webviews and native tray. Removing the key restores System default. Unsupported languages use English. Exact regional matches are preferred; Brazilian and European Portuguese are distinct. Missing or invalid translated messages use English individually, and no network connection is needed. Starter language catalogs may be empty until contributors translate them.
+
 ## Settings Keys
 
 ### Dock
@@ -33,6 +37,7 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 | `bloom-dock-mode`                  | `"fixed"` / `"smart"` / `"peek"` | `"smart"`     | Dock visibility behavior. **fixed** = always visible as AppBar. **smart** = auto-hide when overlapped by fullscreen apps. **peek** = hidden until cursor approaches bottom edge. |
 | `bloom-dock-edge-delay`            | milliseconds `"0"`–`"2000"`      | `"200"`       | In smart/peek mode, how long the cursor must rest against the bottom screen edge before the dock appears. `"0"` reveals instantly.                                               |
 | `bloom-dock-preview-enabled`       | `"true"` / `"false"`             | `"true"`      | Show window thumbnail previews when hovering dock icons.                                                                                                                         |
+| `bloom-dock-show-background-apps`  | `"true"` / `"false"`             | `"true"`      | Keep apps in the dock after they close to the system tray. When disabled, unpinned tray-only apps disappear and pinned apps lose their gray dot.                                 |
 | `bloom-dock-icon-only`             | `"true"` / `"false"`             | `"false"`     | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
 | `bloom-dock-separator-enabled`     | `"true"` / `"false"`             | `"true"`      | Show a divider between pinned and unpinned dock apps when unpinned apps are present. Unpinned apps remain on the right when disabled.                                            |
 | `bloom-start-icon`                 | icon key / `custom:<data URI>`   | `"default"`   | Start button icon: `default`, `bloom-colorful`, `bloom-golden`, `bloom-biscuit`, `windows`, or `custom:` followed by an uploaded image's data URI.                               |

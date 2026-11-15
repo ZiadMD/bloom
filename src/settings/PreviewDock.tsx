@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion } from "framer-motion";
@@ -30,6 +31,7 @@ function TaskViewIcon() {
 }
 
 export function PreviewDock({ settings, revealed }: { settings: Settings; revealed: boolean }) {
+	useTranslation();
 	const [apps, setApps] = useState<AppInfo[]>([]);
 	const [selected, setSelected] = useState<string | null>(null);
 
@@ -42,7 +44,9 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 		]).then(async ([pinned, running, customIcons]) => {
 			const candidates = [
 				...pinned.map((app) => ({ ...app, is_pinned: true })),
-				...running.filter((app) => !pinned.some((pin) => pin.path.toLowerCase() === app.path.toLowerCase()))
+				...running.filter(
+					(app) => !pinned.some((pin) => pin.path.toLowerCase() === app.path.toLowerCase())
+				)
 			].slice(0, 4);
 			const withIcons = await Promise.all(
 				candidates.map(async (app) => ({
@@ -51,7 +55,9 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 						customIcons[app.path] ||
 						app.icon ||
 						(await invoke<string | null>("get_app_icon", { path: app.path }).catch(() => null)),
-					is_running: app.is_running || running.some((active) => active.path.toLowerCase() === app.path.toLowerCase())
+					is_running:
+						app.is_running ||
+						running.some((active) => active.path.toLowerCase() === app.path.toLowerCase())
 				}))
 			);
 			if (!cancelled) setApps(withIcons);
@@ -61,7 +67,8 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 		};
 	}, []);
 
-	if (!settings.dockEnabled) return <div className="settings-preview-empty">Dock is off</div>;
+	if (!settings.dockEnabled)
+		return <div className="settings-preview-empty">{t("ui.previewDock.dockIsOff")}</div>;
 
 	const extras: { name: string; icon: React.ReactNode }[] = [];
 	if (settings.dockExtrasDrives && !settings.dockExtrasHiddenDrives.split(",").includes("D"))
@@ -70,14 +77,15 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 		extras.push({ name: "Folders", icon: <Folder size={22} /> });
 	if (parseCustomFolders(settings.dockExtrasCustomFolders).length > 0)
 		extras.push({ name: "Custom folder", icon: <Folder size={22} /> });
-	if (settings.dockExtrasRecycleBin) extras.push({ name: "Recycle Bin", icon: <Trash2 size={22} /> });
+	if (settings.dockExtrasRecycleBin)
+		extras.push({ name: "Recycle Bin", icon: <Trash2 size={22} /> });
 	const showExtras = settings.dockExtrasPosition !== "off" && extras.length > 0;
 	const item = (name: string, icon: React.ReactNode, running = false, key = name) => (
 		<div className="dock-icon-wrapper settings-preview-dock-item" key={key}>
 			<button
 				type="button"
 				className="dock-icon"
-				aria-label={`Preview ${name}`}
+				aria-label={t("ui.previewDock.previewName", { name: name })}
 				title={name}
 				onClick={() => setSelected((current) => (current === key ? null : key))}
 			>
@@ -90,11 +98,17 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 			)}
 		</div>
 	);
-	const extraItems = extras.slice(0, 3).map((extra) => item(extra.name, extra.icon, false, extra.name));
+	const extraItems = extras
+		.slice(0, 3)
+		.map((extra) => item(extra.name, extra.icon, false, extra.name));
 	const renderApp = (app: AppInfo) =>
 		item(
 			app.name,
-			app.icon ? <img src={app.icon} alt="" /> : <span className="fallback-icon">{app.name.charAt(0)}</span>,
+			app.icon ? (
+				<img src={app.icon} alt="" />
+			) : (
+				<span className="fallback-icon">{app.name.charAt(0)}</span>
+			),
 			app.is_running,
 			app.path
 		);
@@ -144,7 +158,9 @@ export function PreviewDock({ settings, revealed }: { settings: Settings; reveal
 						</>
 					)}
 					<div className="dock-reorder-group">{pinnedApps.map(renderApp)}</div>
-					{settings.dockSeparatorEnabled && runningApps.length > 0 && <div className="dock-app-divider" />}
+					{settings.dockSeparatorEnabled && runningApps.length > 0 && (
+						<div className="dock-app-divider" />
+					)}
 					{runningApps.map(renderApp)}
 					{showExtras && settings.dockExtrasPosition === "right" && (
 						<>

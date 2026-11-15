@@ -7,7 +7,9 @@ mod buds;
 mod commands;
 mod diagnostics;
 mod dock_extras;
+mod i18n;
 mod jack;
+mod onboarding;
 mod services;
 mod settings_window;
 mod shelf;
@@ -132,6 +134,10 @@ fn main() {
             resize_settings_window,
             hide_overlay,
             set_splash_fullscreen,
+            onboarding::get_onboarding_completed,
+            onboarding::complete_onboarding,
+            onboarding::open_onboarding,
+            onboarding::set_onboarding_active,
             sync_overlay_position,
             media_play_pause,
             media_next,
@@ -164,6 +170,7 @@ fn main() {
             open_system_action,
             get_app_icon,
             get_installed_apps,
+            refresh_installed_apps,
             save_pinned_apps,
             load_pinned_apps,
             clear_icon_cache,
@@ -186,6 +193,7 @@ fn main() {
             set_volume_mixer_rect,
             clear_volume_mixer_rect,
             save_setting,
+            i18n::set_tray_language,
             load_settings,
             settings_file_readable,
             capture_window_thumbnail,
@@ -231,6 +239,9 @@ fn main() {
             jack::jack_list_devices
         ])
         .setup(|app| {
+            if let Err(error) = onboarding::initialize(app.handle()) {
+                crate::diagnostics::record("onboarding_state", &error);
+            }
             init_taskbar_marker(app.handle());
             // Populate the settings cache before anything else: a webview can
             // invoke save_setting as soon as it loads, which happens before the
@@ -419,6 +430,13 @@ fn main() {
                 let settings_item =
                     MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
+                app.manage(i18n::TrayMessages {
+                    settings: settings_item,
+                    restart: restart_item,
+                    quit: quit_item,
+                });
+                let locale = get_setting_str(app.handle(), "bloom-language").unwrap_or_default();
+                let _ = i18n::set_tray_language(app.handle().clone(), locale);
                 let ah = app.handle().clone();
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())

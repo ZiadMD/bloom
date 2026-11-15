@@ -1,11 +1,22 @@
+import { t, useTranslation } from "../i18n";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Laptop, LoaderCircle, MonitorSmartphone, Zap } from "lucide-react";
 import { DeviceArt } from "../devices/DeviceArt";
 import { deviceArtFor } from "../devices/deviceArtFor";
-import { DEVICE_LOOKS, WIRED_DEVICE_LOOKS, deviceLookFor, setDeviceLook } from "../devices/deviceLooks";
+import {
+	DEVICE_LOOKS,
+	WIRED_DEVICE_LOOKS,
+	deviceLookFor,
+	setDeviceLook
+} from "../devices/deviceLooks";
 import { isWiredAudio, usbArtFor, usbDisplayName } from "../devices/usbArtFor";
-import { groupDevices, type BudLevel, type BudsBattery, type DeviceEntry } from "../devices/connectedDevices";
+import {
+	groupDevices,
+	type BudLevel,
+	type BudsBattery,
+	type DeviceEntry
+} from "../devices/connectedDevices";
 import type { ConnectedDevicesState, PcBattery } from "../hooks/useConnectedDevices";
 import "./QuickPanel.css";
 
@@ -29,16 +40,23 @@ const EMPTY_BODY_HEIGHT = 72;
 
 function duration(seconds: number): string {
 	const minutes = Math.round(seconds / 60);
-	if (minutes < 60) return `${minutes} min`;
+	if (minutes < 60) return t("ui.connectedDevicesPanel.minutesMin", { minutes: minutes });
 	const hours = Math.floor(minutes / 60);
 	const rest = minutes % 60;
-	return rest ? `${hours} h ${rest} min` : `${hours} h`;
+	return rest
+		? t("ui.connectedDevicesPanel.hoursHRestMin", { hours: hours, rest: rest })
+		: t("ui.connectedDevicesPanel.hoursH", { hours: hours });
 }
 
 function pcStatus(pc: PcBattery): string {
-	if (pc.charging) return pc.seconds_to_full ? `Charging · ${duration(pc.seconds_to_full)} to full` : "Charging";
-	if (pc.plugged_in) return "Plugged in";
-	return pc.seconds_left ? `${duration(pc.seconds_left)} left` : "On battery";
+	if (pc.charging)
+		return pc.seconds_to_full
+			? t("ui.connectedDevicesPanel.chargingValue1ToFull", { value1: duration(pc.seconds_to_full) })
+			: t("notch.status.charging");
+	if (pc.plugged_in) return t("ui.featurePreview.pluggedIn");
+	return pc.seconds_left
+		? t("ui.connectedDevicesPanel.value1Left", { value1: duration(pc.seconds_left) })
+		: t("ui.connectedDevicesPanel.onBattery");
 }
 
 /** One level: its percent over a thin bar, green, or red when low. */
@@ -64,7 +82,14 @@ function Meter({ label, part, low }: { label?: string; part: BudLevel; low: bool
  * choice, the drawing its connection popup uses, which wired devices have no
  * other place to set.
  */
-export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onContentHeight }: ConnectedDevicesPanelProps) {
+export function ConnectedDevicesPanel({
+	data,
+	height,
+	buds,
+	lowThreshold,
+	onContentHeight
+}: ConnectedDevicesPanelProps) {
+	const { locale } = useTranslation();
 	const panelRef = useRef<HTMLDivElement>(null);
 	const headerRef = useRef<HTMLDivElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
@@ -136,7 +161,7 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 		return groupDevices(entries, lowThreshold);
 		// looksVersion: a new pick is read from the setting.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [devices, wired, pc, buds, lowThreshold, looksVersion]);
+	}, [devices, wired, pc, buds, lowThreshold, looksVersion, locale]);
 
 	const isLow = (part: BudLevel) => !part.charging && part.level <= lowThreshold;
 
@@ -145,7 +170,7 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 			const parts: [string, BudLevel][] = [];
 			if (entry.buds.left) parts.push(["L", entry.buds.left]);
 			if (entry.buds.right) parts.push(["R", entry.buds.right]);
-			if (entry.buds.case) parts.push(["Case", entry.buds.case]);
+			if (entry.buds.case) parts.push([t("ui.app.case"), entry.buds.case]);
 			return (
 				<div className="bh-meters">
 					{parts.map(([label, part]) => (
@@ -154,7 +179,10 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 				</div>
 			);
 		}
-		if (entry.level === null) return entry.wired ? null : <span className="bh-unknown">No battery info</span>;
+		if (entry.level === null)
+			return entry.wired ? null : (
+				<span className="bh-unknown">{t("ui.connectedDevicesPanel.noBatteryInfo")}</span>
+			);
 		const part = { level: entry.level, charging: entry.charging };
 		return (
 			<div className="bh-meters">
@@ -165,9 +193,12 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 
 	const subText = (entry: DeviceEntry) => {
 		if (entry.kind === "pc" && pc) return pcStatus(pc);
-		if (entry.wired) return entry.id === "jack" ? "Headphone jack" : "USB";
-		if (entry.buds) return "Each bud and the case";
-		return "Connected";
+		if (entry.wired)
+			return entry.id === "jack"
+				? t("ui.connectedDevicesPanel.headphoneJack")
+				: t("ui.connectedDevicesPanel.usb");
+		if (entry.buds) return t("ui.connectedDevicesPanel.eachBudAndTheCase");
+		return t("notch.commandCenter.connected");
 	};
 
 	// The drawing an audio device's popup uses. Picking what Bloom would
@@ -176,8 +207,12 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 		const looks = entry.wired ? WIRED_DEVICE_LOOKS : DEVICE_LOOKS;
 		const guess = guessFor(entry);
 		return (
-			<div className="qp-chips bh-looks" role="radiogroup" aria-label="Looks like">
-				<span className="qp-note">Looks like</span>
+			<div
+				className="qp-chips bh-looks"
+				role="radiogroup"
+				aria-label={t("ui.bluetoothPanel.looksLike")}
+			>
+				<span className="qp-note">{t("ui.bluetoothPanel.looksLike")}</span>
 				{looks.map((look) => (
 					<button
 						key={look.art}
@@ -235,12 +270,17 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 	// Lay out against the final height; the expanding shell clips the reveal.
 	// Otherwise its intermediate heights briefly make a fitting list scroll.
 	return (
-		<div ref={panelRef} className="qp bh" style={{ height: height - 36 }} onClick={(e) => e.stopPropagation()}>
+		<div
+			ref={panelRef}
+			className="qp bh"
+			style={{ height: height - 36 }}
+			onClick={(e) => e.stopPropagation()}
+		>
 			<div ref={headerRef} className="qp-header">
 				<span className="qp-row-icon bh-title-icon">
 					<MonitorSmartphone />
 				</span>
-				<span className="qp-title">Connected devices</span>
+				<span className="qp-title">{t("ui.connectedDevicesPanel.connectedDevices")}</span>
 			</div>
 			<div className="qp-body">
 				{loading ? (
@@ -249,7 +289,7 @@ export function ConnectedDevicesPanel({ data, height, buds, lowThreshold, onCont
 					</div>
 				) : empty ? (
 					<div className="qp-empty">
-						<span>No devices connected</span>
+						<span>{t("ui.connectedDevicesPanel.noDevicesConnected")}</span>
 					</div>
 				) : (
 					<div ref={listRef} className="qp-list bh-list">

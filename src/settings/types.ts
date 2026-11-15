@@ -8,6 +8,7 @@ export interface WidgetConfig {
 export type SettingsTab = "general" | "appearance" | "notch" | "dock" | "overlays" | "integrations" | "about";
 
 export interface SettingRowProps {
+	previewId?: string;
 	icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }>;
 	label: string;
 	desc?: string;

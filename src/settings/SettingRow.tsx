@@ -1,6 +1,7 @@
 import type { SettingRowProps } from "./types";
 
 export function SettingRow({
+	previewId,
 	icon: Icon,
 	label,
 	desc,
@@ -16,7 +17,7 @@ export function SettingRow({
 
 	return (
 		<>
-			<div className={className} onClick={onClick}>
+			<div data-preview-id={previewId} className={className} onClick={onClick}>
 				<div className="setting-icon-bg">
 					<Icon size={14} strokeWidth={1.5} />
 				</div>
