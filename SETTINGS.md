@@ -15,6 +15,10 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 }
 ```
 
+## Language
+
+`bloom-language` is a string: `"system"` (default), `"en"`, `"ru"`, `"fr"`, `"es"`, `"pt-BR"`, or `"pt-PT"`. Set it in Settings → General → Language. Changes apply live across the webviews and native tray. Removing the key restores System default. Unsupported languages use English. Exact regional matches are preferred; Brazilian and European Portuguese are distinct. Missing or invalid translated messages use English individually, and no network connection is needed. Starter language catalogs may be empty until contributors translate them.
+
 ## Settings Keys
 
 ### Dock

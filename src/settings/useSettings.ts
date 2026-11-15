@@ -1,3 +1,12 @@
+import {
+	getLocale,
+	normalizeLanguageSetting,
+	resolveLanguage,
+	setLocale,
+	t,
+	useTranslation,
+	type LanguageSetting
+} from "../i18n";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -29,6 +38,7 @@ function asPanelChoice(val: unknown): NotchPanelChoice {
 }
 
 export function useSettings() {
+	useTranslation();
 	const [isLoaded, setIsLoaded] = useState(false);
 	const [saveError, setSaveError] = useState(
 		() => sessionStorage.getItem("bloom-settings-save-error") !== null
@@ -59,8 +69,9 @@ export function useSettings() {
 	);
 	const [musicModeEnabled, setMusicModeEnabled] = useState(true);
 	const [notchRememberPanel, setNotchRememberPanel] = useState(
-		() => (localStorage.getItem("bloom-notch-remember-panel") ??
-			localStorage.getItem("bloom-notch-click-to-open")) !== "false"
+		() =>
+			(localStorage.getItem("bloom-notch-remember-panel") ??
+				localStorage.getItem("bloom-notch-click-to-open")) !== "false"
 	);
 	const [notchDefaultPanel, setNotchDefaultPanel] = useState<NotchPanelChoice>(() =>
 		asPanelChoice(localStorage.getItem("bloom-notch-default-panel"))
@@ -199,6 +210,9 @@ export function useSettings() {
 	const [importStatus, setImportStatus] = useState<"idle" | "importing" | "success" | "error">(
 		"idle"
 	);
+	const [language, setLanguage] = useState<LanguageSetting>(() =>
+		normalizeLanguageSetting(localStorage.getItem("bloom-language"))
+	);
 
 	// ── Load all settings from backend + localStorage ──
 	const loadAllSettings = useCallback(async () => {
@@ -226,8 +240,11 @@ export function useSettings() {
 			apply(getVal("bloom-notch-devices-enabled"), setDevicesPanelEnabled, readBool);
 			apply(getVal("bloom-timer-sound-enabled"), setTimerSoundEnabled, readBool);
 			apply(getVal("bloom-music-mode-enabled"), setMusicModeEnabled, readBool);
-			apply(getVal("bloom-notch-remember-panel") ?? getVal("bloom-notch-click-to-open"),
-				setNotchRememberPanel, readBool);
+			apply(
+				getVal("bloom-notch-remember-panel") ?? getVal("bloom-notch-click-to-open"),
+				setNotchRememberPanel,
+				readBool
+			);
 			apply(getVal("bloom-notch-default-panel"), setNotchDefaultPanel, asPanelChoice);
 			apply(getVal("bloom-music-compact-notch"), setMusicCompactNotch, readBool);
 			apply(getVal("bloom-shelf-persist"), setShelfPersist, readBool);
@@ -269,6 +286,10 @@ export function useSettings() {
 
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
+
+			const savedLanguage = normalizeLanguageSetting(getVal("bloom-language"));
+			setLanguage(savedLanguage);
+			setLocale(resolveLanguage(savedLanguage));
 
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
@@ -330,7 +351,10 @@ export function useSettings() {
 
 	// Coordinates only need the backend settings file. Keep them out of the
 	// browser's localStorage mirror while preserving the same queued/error path.
-	const saveLocation = (key: "bloom-weather-lat" | "bloom-weather-lon", value: string | null): Promise<boolean> => {
+	const saveLocation = (
+		key: "bloom-weather-lat" | "bloom-weather-lon",
+		value: string | null
+	): Promise<boolean> => {
 		const operation = saveQueue.current.then(async () => {
 			if (saveFailed.current) return false;
 			try {
@@ -410,8 +434,7 @@ export function useSettings() {
 		"bloom-timer-sound-enabled": setTimerSoundEnabled,
 		"bloom-music-mode-enabled": setMusicModeEnabled,
 		"bloom-notch-remember-panel": setNotchRememberPanel,
-		"bloom-notch-default-panel": (v: unknown) =>
-			setNotchDefaultPanel(asPanelChoice(v)),
+		"bloom-notch-default-panel": (v: unknown) => setNotchDefaultPanel(asPanelChoice(v)),
 		"bloom-music-compact-notch": setMusicCompactNotch,
 		"bloom-media-ambience-enabled": setMediaAmbienceEnabled,
 		"bloom-media-compact-glow-enabled": setMediaCompactGlowEnabled,
@@ -433,7 +456,15 @@ export function useSettings() {
 		"bloom-theme-opacity": setThemeOpacity,
 		"bloom-theme-saturation": setThemeSaturation,
 		"bloom-theme-brightness": setThemeBrightness,
-		"bloom-weather-city": (v) => setCityName(v || "")
+		"bloom-weather-city": (v) => setCityName(v || ""),
+		"bloom-language": {
+			set: (v) => {
+				const next = normalizeLanguageSetting(v);
+				setLanguage(next);
+				setLocale(resolveLanguage(next));
+			},
+			defaultValue: "system"
+		}
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -466,7 +497,7 @@ export function useSettings() {
 		const timeout = setTimeout(async () => {
 			try {
 				const res = await fetch(
-					`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=en&format=json`
+					`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=${getLocale()}&format=json`
 				);
 				const data = await res.json();
 				if (data.results && data.results.length > 0) {
@@ -786,7 +817,7 @@ export function useSettings() {
 		try {
 			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
 			const selected = await openDialog({
-				title: "Add a folder to the dock",
+				title: t("ui.useSettings.addAFolderToTheDock"),
 				directory: true,
 				multiple: false
 			});
@@ -810,6 +841,13 @@ export function useSettings() {
 		const next = !autoUpdate;
 		setAutoUpdate(next);
 		saveSetting("bloom-auto-update", String(next));
+	};
+
+	const handleLanguageChange = (code: string) => {
+		const next = normalizeLanguageSetting(code);
+		setLanguage(next);
+		setLocale(resolveLanguage(next));
+		saveSetting("bloom-language", next);
 	};
 
 	// ── Value setters ──
@@ -929,15 +967,12 @@ export function useSettings() {
 	const resetToDefaults = async () => {
 		try {
 			const { ask } = await import("@tauri-apps/plugin-dialog");
-			const confirmed = await ask(
-				"All settings return to their defaults and Bloom restarts. Pinned apps and custom icons are kept.",
-				{
-					title: "Reset Bloom to Defaults",
-					kind: "warning",
-					okLabel: "Reset and Restart",
-					cancelLabel: "Cancel"
-				}
-			);
+			const confirmed = await ask(t("settings.dialogs.resetBody"), {
+				title: t("settings.dialogs.resetTitle"),
+				kind: "warning",
+				okLabel: t("settings.dialogs.resetConfirm"),
+				cancelLabel: t("common.cancel")
+			});
 			if (!confirmed) return;
 
 			await invoke("reset_settings");
@@ -1005,6 +1040,8 @@ export function useSettings() {
 		// System
 		autostart,
 		toggleAutostart,
+		language,
+		handleLanguageChange,
 		autoUpdate,
 		toggleAutoUpdate,
 		lowBatteryThreshold,

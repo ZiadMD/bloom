@@ -1,5 +1,6 @@
 import { Volume2, Sun, ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { t, useTranslation } from "../i18n";
 
 interface OverlaysTabProps {
 	volumeOverlayEnabled: boolean;
@@ -22,11 +23,18 @@ export function OverlaysTab({
 	brightnessEdgeEnabled,
 	toggleBrightnessEdge
 }: OverlaysTabProps) {
+	useTranslation();
+
 	return (
 		<>
-			<div className="setting-group-label">Overlays</div>
+			<div className="setting-group-label">{t("settings.groups.overlays")}</div>
 			<div className="setting-group">
-				<SettingRow icon={Volume2} label="Volume HUD" desc="Bloom volume overlay">
+				<SettingRow
+					previewId="volume-hud"
+					icon={Volume2}
+					label={t("settings.overlays.volume")}
+					desc={t("settings.overlays.volumeDesc")}
+				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={volumeOverlayEnabled} onChange={toggleVolumeOverlay} />
 						<span className="slider"></span>
@@ -35,9 +43,10 @@ export function OverlaysTab({
 
 				{volumeOverlayEnabled && (
 					<SettingRow
+						previewId="volume-edge-hover"
 						icon={ArrowLeftToLine}
-						label="Show on Edge Hover"
-						desc="Slide in from left edge"
+						label={t("settings.overlays.volumeEdge")}
+						desc={t("settings.overlays.volumeEdgeDesc")}
 					>
 						<label className="toggle-switch">
 							<input type="checkbox" checked={volumeEdgeEnabled} onChange={toggleVolumeEdge} />
@@ -46,7 +55,12 @@ export function OverlaysTab({
 					</SettingRow>
 				)}
 
-				<SettingRow icon={Sun} label="Brightness HUD" desc="Bloom brightness overlay">
+				<SettingRow
+					previewId="brightness-hud"
+					icon={Sun}
+					label={t("settings.overlays.brightness")}
+					desc={t("settings.overlays.brightnessDesc")}
+				>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -59,9 +73,10 @@ export function OverlaysTab({
 
 				{brightnessOverlayEnabled && (
 					<SettingRow
+						previewId="brightness-edge-hover"
 						icon={ArrowRightToLine}
-						label="Show on Edge Hover"
-						desc="Slide in from right edge"
+						label={t("settings.overlays.brightnessEdge")}
+						desc={t("settings.overlays.brightnessEdgeDesc")}
 						divider={false}
 					>
 						<label className="toggle-switch">

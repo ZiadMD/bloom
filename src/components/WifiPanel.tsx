@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -32,14 +33,30 @@ interface WifiNetworkList {
 const PERSONAL = new Set(["wpa", "wpa2", "wpa3"]);
 
 const ERROR_TEXT: Record<string, string> = {
-	"wrong-password": "Wrong password",
-	"password-required": "Enter the password",
-	"password-length": "Wi-Fi passwords are 8 to 63 characters",
-	unsupported: "Connect to this network in Windows Settings",
-	"not-found": "This network is out of range",
-	timeout: "Couldn't connect in time",
-	"no-adapter": "No Wi-Fi adapter found",
-	"location-denied": "Location access is off"
+	get "wrong-password"() {
+		return t("ui.wifiPanel.wrongPassword");
+	},
+	get "password-required"() {
+		return t("ui.wifiPanel.enterThePassword");
+	},
+	get "password-length"() {
+		return t("ui.wifiPanel.wiFiPasswordsAre8To63Characters");
+	},
+	get unsupported() {
+		return t("ui.wifiPanel.connectToThisNetworkInWindowsSettings");
+	},
+	get "not-found"() {
+		return t("ui.wifiPanel.thisNetworkIsOutOfRange");
+	},
+	get timeout() {
+		return t("ui.wifiPanel.couldnTConnectInTime");
+	},
+	get "no-adapter"() {
+		return t("ui.wifiPanel.noWiFiAdapterFound");
+	},
+	get "location-denied"() {
+		return t("ui.wifiPanel.locationAccessIsOff");
+	}
 };
 
 function SignalIcon({ signal }: { signal: number }) {
@@ -58,6 +75,7 @@ interface WifiPanelProps {
 }
 
 export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelProps) {
+	useTranslation();
 	const [list, setList] = useState<WifiNetworkList | null>(null);
 	const [scanning, setScanning] = useState(false);
 	const [selected, setSelected] = useState<string | null>(null);
@@ -172,10 +190,10 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 	};
 
 	const statusText = (n: WifiNetwork) => {
-		if (busy === n.ssid) return "Connecting…";
-		if (n.connected) return "Connected";
-		if (n.saved) return "Saved";
-		return n.security === "open" ? "Open" : "Secured";
+		if (busy === n.ssid) return t("ui.bluetoothPanel.connecting");
+		if (n.connected) return t("notch.commandCenter.connected");
+		if (n.saved) return t("ui.wifiPanel.saved");
+		return n.security === "open" ? t("ui.dock.open") : t("ui.wifiPanel.secured");
 	};
 
 	const renderActions = (n: WifiNetwork) => {
@@ -186,9 +204,9 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 		if (handledByWindows) {
 			return (
 				<div className="qp-row-actions">
-					<span className="qp-note">This network needs a sign-in Windows handles.</span>
+					<span className="qp-note">{t("ui.wifiPanel.thisNetworkNeedsASignInWindowsHandles")}</span>
 					<button className="qp-btn" onClick={() => invoke("wifi_open_settings", { page: "wifi" })}>
-						Open Settings
+						{t("dock.options.openSettings")}
 					</button>
 				</div>
 			);
@@ -200,7 +218,7 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 					<input
 						className="qp-input"
 						type="password"
-						placeholder="Password"
+						placeholder={t("ui.wifiPanel.password")}
 						autoFocus
 						value={password}
 						disabled={isBusy}
@@ -217,7 +235,7 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 				<div className="qp-btn-row">
 					{n.connected ? (
 						<button className="qp-btn" onClick={disconnect}>
-							Disconnect
+							{t("ui.bluetoothPanel.disconnect")}
 						</button>
 					) : (
 						<button
@@ -225,12 +243,12 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 							disabled={isBusy || (needsPassword && !password)}
 							onClick={() => void connect(n, needsPassword)}
 						>
-							{isBusy ? <LoaderCircle className="qp-spin" /> : "Connect"}
+							{isBusy ? <LoaderCircle className="qp-spin" /> : t("ui.bluetoothPanel.connect")}
 						</button>
 					)}
 					{n.saved && (
 						<button className="qp-btn" disabled={isBusy} onClick={() => void forget(n)}>
-							Forget
+							{t("ui.wifiPanel.forget")}
 						</button>
 					)}
 				</div>
@@ -239,17 +257,17 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 	};
 
 	const renderBody = () => {
-		if (!enabled) return <div className="qp-empty">Wi-Fi is off</div>;
+		if (!enabled) return <div className="qp-empty">{t("ui.wifiPanel.wiFiIsOff")}</div>;
 		if (list?.location_denied) {
 			return (
 				<div className="qp-empty">
 					<MapPin />
-					<span>Windows only lists Wi-Fi networks for apps with location access.</span>
+					<span>{t("ui.wifiPanel.windowsOnlyListsWiFiNetworksForAppsWithLocation")}</span>
 					<button
 						className="qp-btn"
 						onClick={() => invoke("wifi_open_settings", { page: "location" })}
 					>
-						Location settings
+						{t("ui.wifiPanel.locationSettings")}
 					</button>
 				</div>
 			);
@@ -263,7 +281,9 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 		}
 		if (list.networks.length === 0) {
 			return (
-				<div className="qp-empty">{scanning ? "Looking for networks…" : "No networks found"}</div>
+				<div className="qp-empty">
+					{scanning ? t("ui.wifiPanel.lookingForNetworks") : t("ui.wifiPanel.noNetworksFound")}
+				</div>
 			);
 		}
 		return (
@@ -301,7 +321,11 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 	return (
 		<div className="qp" onClick={(e) => e.stopPropagation()}>
 			<div className="qp-header">
-				<button className="qp-icon-btn" onClick={onBack} aria-label="Back to controls">
+				<button
+					className="qp-icon-btn"
+					onClick={onBack}
+					aria-label={t("ui.bluetoothPanel.backToControls")}
+				>
 					<ChevronLeft />
 				</button>
 				<span className="qp-title">Wi-Fi</span>
@@ -309,7 +333,7 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 					className="qp-icon-btn"
 					onClick={() => void scan()}
 					disabled={!enabled || scanning}
-					aria-label="Scan for networks"
+					aria-label={t("ui.wifiPanel.scanForNetworks")}
 				>
 					<RefreshCw className={scanning ? "qp-spin" : ""} />
 				</button>
@@ -317,7 +341,7 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 					className={`qp-switch ${enabled ? "on" : ""}`}
 					role="switch"
 					aria-checked={enabled}
-					aria-label="Wi-Fi"
+					aria-label={t("notch.commandCenter.wifi")}
 					onClick={onToggle}
 				>
 					<span />
@@ -325,7 +349,7 @@ export function WifiPanel({ enabled, onToggle, onBack, onPinChange }: WifiPanelP
 			</div>
 			<div className="qp-body">{renderBody()}</div>
 			<button className="qp-footer" onClick={() => invoke("wifi_open_settings", { page: "wifi" })}>
-				More Wi-Fi settings
+				{t("ui.wifiPanel.moreWiFiSettings")}
 			</button>
 		</div>
 	);

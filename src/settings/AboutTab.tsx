@@ -2,6 +2,7 @@ import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GithubIcon } from "../icons";
 import { SettingRow } from "./SettingRow";
+import { t, useTranslation } from "../i18n";
 
 interface AboutTabProps {
 	appVersion: string;
@@ -30,66 +31,78 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
+	useTranslation();
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
 			case "checking":
-				return "Checking...";
+				return t("settings.about.checking");
 			case "available":
-				return `Update Available (v${updateVersion})`;
+				return t("settings.about.available", { version: updateVersion });
 			case "uptodate":
-				return "Bloom is up to date";
+				return t("settings.about.upToDate");
 			case "downloading":
-				return "Downloading Update...";
+				return t("settings.about.downloading");
 			case "installing":
-				return "Installing...";
+				return t("settings.about.installing");
 			case "error":
-				return "No updates found";
+				return t("settings.about.noUpdates");
 			default:
-				return "Check for Updates";
+				return t("settings.about.check");
 		}
 	};
 
 	const getUpdateDesc = () =>
 		updateStatus === "available"
-			? "Click to install and restart"
-			: `Currently running v${appVersion}`;
+			? t("settings.about.installDesc")
+			: t("settings.about.currentVersion", { version: appVersion });
 
 	const getExportLabel = () => {
-		if (exportStatus === "exporting") return "Exporting...";
-		if (exportStatus === "success") return "Exported!";
-		if (exportStatus === "error") return "Export failed. Try again.";
-		return "Export Settings";
+		if (exportStatus === "exporting") return t("settings.about.exporting");
+		if (exportStatus === "success") return t("settings.about.exported");
+		if (exportStatus === "error") return t("ui.aboutTab.exportFailedTryAgain");
+		return t("settings.about.export");
 	};
 
 	const getImportLabel = () => {
-		if (importStatus === "importing") return "Importing...";
-		if (importStatus === "success") return "Imported!";
-		if (importStatus === "error") return "Import failed. Check the file and try again.";
-		return "Import Settings";
+		if (importStatus === "importing") return t("settings.about.importing");
+		if (importStatus === "success") return t("settings.about.imported");
+		if (importStatus === "error") return t("ui.aboutTab.importFailedCheckTheFileAndTryAgain");
+		return t("settings.about.import");
 	};
 
 	return (
 		<div className="about-tab-container">
 			<div className="about-header">
-				<img src="/bloom.png" className="about-logo" alt="Bloom Logo" draggable={false} />
+				<img
+					src="/bloom.png"
+					className="about-logo"
+					alt={t("ui.aboutTab.bloomLogo")}
+					draggable={false}
+				/>
 				<h1 className="about-title">Bloom</h1>
-				<p className="about-version">Version {appVersion}</p>
+				<p className="about-version">{t("settings.about.version", { version: appVersion })}</p>
 				<p className="about-credit">
-					Made with <span className="about-heart">❤️</span> by{" "}
+					{t("settings.about.madeWith")} <span className="about-heart">❤️</span>{" "}
+					{t("settings.about.by")}{" "}
 					<button
 						className="about-author"
 						onClick={() => openUrl("https://github.com/SehajveerSingh2005")}
-						title="sehaz on GitHub"
+						title={t("settings.about.authorTitle")}
 					>
 						<GithubIcon size={12} />
-						<span>sehaz</span>
+						<span>{t("ui.aboutTab.sehaz")}</span>
 					</button>
 				</p>
 			</div>
 
-			<div className="setting-group-label">Software Updates</div>
+			<div className="setting-group-label">{t("settings.groups.updates")}</div>
 			<div className="setting-group">
-				<SettingRow icon={Download} label="Auto Update" desc="Update automatically on startup">
+				<SettingRow
+					previewId="auto-update"
+					icon={Download}
+					label={t("settings.about.autoUpdate")}
+					desc={t("settings.about.autoUpdateDesc")}
+				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={autoUpdate} onChange={toggleAutoUpdate} />
 						<span className="slider"></span>
@@ -106,19 +119,21 @@ export function AboutTab({
 				/>
 			</div>
 
-			<div className="setting-group-label setting-group-label--spaced">Data</div>
+			<div className="setting-group-label setting-group-label--spaced">
+				{t("settings.groups.data")}
+			</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={FileDown}
 					label={getExportLabel()}
-					desc="Save settings to a file"
+					desc={t("settings.about.exportDesc")}
 					action
 					onClick={handleExportSettings}
 				/>
 				<SettingRow
 					icon={Upload}
 					label={getImportLabel()}
-					desc="Load settings from a file"
+					desc={t("settings.about.importDesc")}
 					action
 					divider={false}
 					onClick={handleImportSettings}

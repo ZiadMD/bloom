@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion, useAnimation, useReducedMotion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,23 +15,27 @@ import {
 } from "../onboardingState";
 import "./Onboarding.css";
 
-const MODES: { value: SurfaceMode; label: string }[] = [
-	{ value: "fixed", label: "Fixed" },
-	{ value: "smart", label: "Smart" },
-	{ value: "peek", label: "Peek" }
-];
-const EXPLANATIONS = {
-	island: {
-		fixed: "Stays visible, with your clock and quick information in reach.",
-		smart: "Moves aside when a window overlaps it.\nReturn to the top edge to reveal it.",
-		peek: "Waits at the top edge.\nMove there to reveal it."
-	},
-	dock: {
-		fixed: "Stays visible and reserves space beneath your windows.",
-		smart: "Moves aside when a window overlaps it.\nReturn to the bottom edge to reveal it.",
-		peek: "Waits at the bottom edge.\nMove there to reveal it."
-	}
-};
+function getMODES(): { value: SurfaceMode; label: string }[] {
+	return [
+		{ value: "fixed", label: t("common.behavior.fixed") },
+		{ value: "smart", label: t("common.behavior.smart") },
+		{ value: "peek", label: t("common.behavior.peek") }
+	];
+}
+function getEXPLANATIONS() {
+	return {
+		island: {
+			fixed: t("ui.onboarding.staysVisibleWithYourClockAndQuickInformationInReach"),
+			smart: t("ui.onboarding.movesAsideWhenAWindowOverlapsItReturnToThe"),
+			peek: t("ui.onboarding.waitsAtTheTopEdgeMoveThereToRevealIt")
+		},
+		dock: {
+			fixed: t("ui.onboarding.staysVisibleAndReservesSpaceBeneathYourWindows"),
+			smart: t("ui.onboarding.movesAsideWhenAWindowOverlapsItReturnToThe2"),
+			peek: t("ui.onboarding.waitsAtTheBottomEdgeMoveThereToRevealIt")
+		}
+	};
+}
 
 function ModeChoice({
 	surface,
@@ -43,15 +48,19 @@ function ModeChoice({
 	disabled: boolean;
 	onChange: (mode: SurfaceMode) => void;
 }) {
+	useTranslation();
 	const defaultMode = surface === "island" ? "fixed" : "smart";
 	return (
 		<fieldset className="onboarding-mode-group">
 			<legend>
-				{surface === "island" ? "The Island" : "The Dock"}
-				<span>Default: {defaultMode === "fixed" ? "Fixed" : "Smart"}</span>
+				{surface === "island" ? t("ui.onboarding.theIsland") : t("ui.onboarding.theDock")}
+				<span>
+					{t("ui.onboarding.default")}
+					{defaultMode === "fixed" ? t("common.behavior.fixed") : t("common.behavior.smart")}
+				</span>
 			</legend>
 			<div className="onboarding-segments">
-				{MODES.map((option) => (
+				{getMODES().map((option) => (
 					<label key={option.value} className={value === option.value ? "selected" : ""}>
 						<input
 							type="radio"
@@ -66,80 +75,88 @@ function ModeChoice({
 					</label>
 				))}
 			</div>
-			<p aria-live="polite">{EXPLANATIONS[surface][value]}</p>
+			<p aria-live="polite">{getEXPLANATIONS()[surface][value]}</p>
 		</fieldset>
 	);
 }
 
 type TourAnchor = "center" | "island" | "dock";
-const STEPS: {
+function getSTEPS(): {
 	title: string;
 	description: string;
 	anchor: TourAnchor;
 	kind: "welcome" | "intro" | "island-mode" | "dock-mode" | "controls" | "preferences" | "finish";
 	hints?: string[];
-}[] = [
-	{
-		title: "Welcome to Bloom.",
-		description: "Bloom makes your Windows desktop feel alive.",
-		anchor: "center",
-		kind: "welcome"
-	},
-	{
-		title: "Meet the Island.",
-		description: "Music, widgets and quick controls, together at the top of your screen.",
-		anchor: "island",
-		kind: "intro",
-		hints: [
-			"Hover to reveal widgets.",
-			"While hovering, click, swipe or scroll to open and switch modes.",
-			"Find quick controls and Settings in Command Center."
-		]
-	},
-	{
-		title: "Keep it in reach.",
-		description: "Choose when your Island stays on screen.",
-		anchor: "island",
-		kind: "island-mode"
-	},
-	{
-		title: "Meet the Dock.",
-		description: "Your apps live down here now, in place of the Windows taskbar.",
-		anchor: "dock",
-		kind: "intro",
-		hints: ["Hover for window previews.", "Drag your apps to reorder them."]
-	},
-	{
-		title: "Give your apps some space.",
-		description: "Choose when your Dock stays on screen.",
-		anchor: "dock",
-		kind: "dock-mode"
-	},
-	{
-		title: "A little less interruption.",
-		description: "Bloom brings volume and brightness controls to the sides of your screen.",
-		anchor: "center",
-		kind: "controls",
-		hints: ["Use your keyboard controls as usual.", "Enable edge hover in Settings."]
-	},
-	{
-		title: "Make yourself at home.",
-		description: "A few small choices, your way.",
-		anchor: "center",
-		kind: "preferences"
-	},
-	{
-		title: "Already blooming.",
-		description: "Bloom is already working. Go on, try it out.",
-		anchor: "center",
-		kind: "finish",
-		hints: [
-			"Open Settings from Command Center.",
-			"Or right-click the Dock for Bloom Options.",
-			"Quit Bloom to restore the Windows taskbar."
-		]
-	}
-];
+}[] {
+	return [
+		{
+			title: t("ui.onboarding.welcomeToBloom"),
+			description: t("ui.onboarding.bloomMakesYourWindowsDesktopFeelAlive"),
+			anchor: "center",
+			kind: "welcome"
+		},
+		{
+			title: t("ui.onboarding.meetTheIsland"),
+			description: t("ui.onboarding.musicWidgetsAndQuickControlsTogetherAtTheTopOf"),
+			anchor: "island",
+			kind: "intro",
+			hints: [
+				t("ui.onboarding.hoverToRevealWidgets"),
+				t("ui.onboarding.whileHoveringClickSwipeOrScrollToOpenAndSwitch"),
+				t("ui.onboarding.findQuickControlsAndSettingsInCommandCenter")
+			]
+		},
+		{
+			title: t("ui.onboarding.keepItInReach"),
+			description: t("ui.onboarding.chooseWhenYourIslandStaysOnScreen"),
+			anchor: "island",
+			kind: "island-mode"
+		},
+		{
+			title: t("ui.onboarding.meetTheDock"),
+			description: t("ui.onboarding.yourAppsLiveDownHereNowInPlaceOfThe"),
+			anchor: "dock",
+			kind: "intro",
+			hints: [
+				t("ui.onboarding.hoverForWindowPreviews"),
+				t("ui.onboarding.dragYourAppsToReorderThem")
+			]
+		},
+		{
+			title: t("ui.onboarding.giveYourAppsSomeSpace"),
+			description: t("ui.onboarding.chooseWhenYourDockStaysOnScreen"),
+			anchor: "dock",
+			kind: "dock-mode"
+		},
+		{
+			title: t("ui.onboarding.aLittleLessInterruption"),
+			description: t("ui.onboarding.bloomBringsVolumeAndBrightnessControlsToTheSidesOf"),
+			anchor: "center",
+			kind: "controls",
+			hints: [
+				t("ui.onboarding.useYourKeyboardControlsAsUsual"),
+				t("ui.onboarding.enableEdgeHoverInSettings")
+			]
+		},
+		{
+			title: t("ui.onboarding.makeYourselfAtHome"),
+			description: t("ui.onboarding.aFewSmallChoicesYourWay"),
+			anchor: "center",
+			kind: "preferences"
+		},
+		{
+			title: t("ui.onboarding.alreadyBlooming"),
+			description: t("ui.onboarding.bloomIsAlreadyWorkingGoOnTryItOut"),
+			anchor: "center",
+			kind: "finish",
+			hints: [
+				t("ui.onboarding.openSettingsFromCommandCenter"),
+				t("ui.onboarding.orRightClickTheDockForBloomOptions"),
+				t("ui.onboarding.quitBloomToRestoreTheWindowsTaskbar")
+			]
+		}
+	];
+}
 const CARD_WIDTH = 500;
 const CARD_HEIGHT = 400;
 
@@ -152,6 +169,7 @@ export function Onboarding({
 	onClose: () => Promise<void>;
 	onRegionChange: (rects: RegionRect[]) => void;
 }) {
+	useTranslation();
 	const [step, setStep] = useState(0);
 	const [choices, setChoices] = useState<OnboardingChoices | null>(null);
 	const [themeMode, setThemeMode] = useState("dark");
@@ -167,7 +185,7 @@ export function Onboarding({
 	const reducedMotion = useReducedMotion();
 	const shell = useAnimation();
 	const content = useAnimation();
-	const page = STEPS[step];
+	const page = getSTEPS()[step];
 	const fitScale = Math.max(
 		0.4,
 		Math.min(scale, (viewport.width - 40) / CARD_WIDTH, (viewport.height - 160) / CARD_HEIGHT)
@@ -206,7 +224,8 @@ export function Onboarding({
 				}
 			})
 			.catch((reason) => {
-				if (!disposed) setError(`Couldn't load setup: ${String(reason)}`);
+				if (!disposed)
+					setError(t("ui.onboarding.couldnTLoadSetupValue1", { value1: String(reason) }));
 			});
 		const resize = () => setViewport({ width: innerWidth, height: innerHeight });
 		window.addEventListener("resize", resize);
@@ -271,7 +290,7 @@ export function Onboarding({
 	}, [page.anchor, page.kind]);
 
 	const navigate = async (next: number) => {
-		if (saving.current || next < 0 || next >= STEPS.length) return;
+		if (saving.current || next < 0 || next >= getSTEPS().length) return;
 		const generation = ++navigation.current;
 		await content.start({ opacity: 0, transition: { duration: reducedMotion ? 0 : 0.1 } });
 		if (alive.current && generation === navigation.current) {
@@ -287,7 +306,9 @@ export function Onboarding({
 		try {
 			await onClose();
 		} catch (reason) {
-			setError(`Couldn't finish setup. Please try again. ${String(reason)}`);
+			setError(
+				t("ui.onboarding.couldnTFinishSetupPleaseTryAgainValue1", { value1: String(reason) })
+			);
 		} finally {
 			saving.current = false;
 			setBusy(false);
@@ -315,7 +336,9 @@ export function Onboarding({
 			setThemeMode(value);
 			localStorage.setItem("bloom-theme-mode", value);
 		} catch (reason) {
-			setError(`Couldn't change appearance. Please try again. ${String(reason)}`);
+			setError(
+				t("ui.onboarding.couldnTChangeAppearancePleaseTryAgainValue1", { value1: String(reason) })
+			);
 		} finally {
 			saving.current = false;
 			setBusy(false);
@@ -343,7 +366,9 @@ export function Onboarding({
 			});
 			setChoices((current) => (current ? { ...current, [key]: value } : current));
 		} catch (reason) {
-			setError(`Couldn't finish saving. Please try again. ${String(reason)}`);
+			setError(
+				t("ui.onboarding.couldnTFinishSavingPleaseTryAgainValue1", { value1: String(reason) })
+			);
 		} finally {
 			saving.current = false;
 			setBusy(false);
@@ -392,10 +417,10 @@ export function Onboarding({
 						<img className="onboarding-watermark" src="/bloom.png" alt="" />
 					</div>
 					<header className="onboarding-header">
-						<span>bloom</span>
+						<span>{"bloom"}</span>
 						<button
 							type="button"
-							aria-label="Close setup"
+							aria-label={t("ui.onboarding.closeSetup")}
 							disabled={busy}
 							onClick={() => void dismiss()}
 						>
@@ -467,21 +492,23 @@ export function Onboarding({
 							{page.kind === "preferences" && choices && (
 								<div className="onboarding-preferences">
 									<label htmlFor="onboarding-appearance">
-										<span>Appearance</span>
+										<span>{t("settings.tabs.appearance")}</span>
 										<select
 											id="onboarding-appearance"
 											value={themeMode}
 											disabled={busy}
 											onChange={(event) => void changeAppearance(event.target.value)}
 										>
-											<option value="dark">Dark</option>
-											<option value="light">Light</option>
-											{themeMode === "custom" && <option value="custom">Custom (current)</option>}
-											<option value="adaptive">Adaptive Color</option>
+											<option value="dark">{t("ui.onboarding.dark")}</option>
+											<option value="light">{t("ui.onboarding.light")}</option>
+											{themeMode === "custom" && (
+												<option value="custom">{t("ui.onboarding.customCurrent")}</option>
+											)}
+											<option value="adaptive">{t("ui.onboarding.adaptiveColor")}</option>
 										</select>
 									</label>
 									<label>
-										<span>Start with Windows</span>
+										<span>{t("ui.onboarding.startWithWindows")}</span>
 										<input
 											type="checkbox"
 											role="switch"
@@ -492,7 +519,7 @@ export function Onboarding({
 										<span className="onboarding-toggle" aria-hidden="true" />
 									</label>
 									<label>
-										<span>Automatic updates</span>
+										<span>{t("ui.onboarding.automaticUpdates")}</span>
 										<input
 											type="checkbox"
 											role="switch"
@@ -506,7 +533,7 @@ export function Onboarding({
 							)}
 							{!choices && !error && (
 								<p className="onboarding-status" role="status">
-									Getting things ready…
+									{t("ui.onboarding.gettingThingsReady")}
 								</p>
 							)}
 							{error && (
@@ -518,16 +545,19 @@ export function Onboarding({
 						<footer className="onboarding-footer">
 							<span
 								className="onboarding-progress"
-								aria-label={`Step ${step + 1} of ${STEPS.length}`}
+								aria-label={t("ui.onboarding.stepValue1OfValue2", {
+									value1: step + 1,
+									value2: getSTEPS().length
+								})}
 							>
-								{step + 1} / {STEPS.length}
+								{step + 1} / {getSTEPS().length}
 							</span>
 							<div className="onboarding-actions">
 								{step > 0 && (
 									<button
 										type="button"
 										className="onboarding-back"
-										aria-label="Previous step"
+										aria-label={t("ui.onboarding.previousStep")}
 										disabled={busy}
 										onClick={() => void navigate(step - 1)}
 									>
@@ -541,7 +571,7 @@ export function Onboarding({
 										disabled={busy}
 										onClick={() => void dismiss()}
 									>
-										Skip
+										{t("ui.onboarding.skip")}
 									</button>
 								)}
 								<button
@@ -554,12 +584,12 @@ export function Onboarding({
 									}}
 								>
 									{busy
-										? "Saving…"
+										? t("ui.onboarding.saving")
 										: page.kind === "welcome"
-											? "Show me around"
+											? t("ui.onboarding.showMeAround")
 											: page.kind === "finish"
-												? "Let's bloom"
-												: "Continue"}
+												? t("ui.onboarding.letSBloom")
+												: t("ui.onboarding.continue")}
 									{page.kind !== "finish" && <ArrowRight size={15} />}
 								</button>
 							</div>

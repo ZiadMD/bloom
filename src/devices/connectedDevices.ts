@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { DeviceArtKey } from "./art";
 
 export interface BudLevel {
@@ -40,13 +41,48 @@ export interface DeviceGroup {
 }
 
 const GROUPS: { key: DeviceGroupKey; title: string }[] = [
-	{ key: "low", title: "Needs charging" },
-	{ key: "pc", title: "This PC" },
-	{ key: "audio", title: "Audio" },
-	{ key: "phone", title: "Phone & watch" },
-	{ key: "accessories", title: "Accessories" },
-	{ key: "usb", title: "Drives & cameras" },
-	{ key: "other", title: "Other" }
+	{
+		key: "low",
+		get title() {
+			return t("ui.connectedDevices.needsCharging");
+		}
+	},
+	{
+		key: "pc",
+		get title() {
+			return t("ui.connectedDevices.thisPc");
+		}
+	},
+	{
+		key: "audio",
+		get title() {
+			return t("ui.connectedDevices.audio");
+		}
+	},
+	{
+		key: "phone",
+		get title() {
+			return t("ui.connectedDevices.phoneWatch");
+		}
+	},
+	{
+		key: "accessories",
+		get title() {
+			return t("ui.connectedDevices.accessories");
+		}
+	},
+	{
+		key: "usb",
+		get title() {
+			return t("ui.connectedDevices.drivesCameras");
+		}
+	},
+	{
+		key: "other",
+		get title() {
+			return t("ui.connectedDevices.other");
+		}
+	}
 ];
 
 function typeGroup(kind: string): DeviceGroupKey {
@@ -90,7 +126,11 @@ export function urgentLevel(entry: DeviceEntry): number | null {
 
 /** The level a device sorts by: its lowest known part. */
 function sortLevel(entry: DeviceEntry): number | null {
-	const levels = entry.buds ? budParts(entry.buds).map((p) => p.level) : entry.level !== null ? [entry.level] : [];
+	const levels = entry.buds
+		? budParts(entry.buds).map((p) => p.level)
+		: entry.level !== null
+			? [entry.level]
+			: [];
 	return levels.length > 0 ? Math.min(...levels) : null;
 }
 

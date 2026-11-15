@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -41,12 +42,24 @@ interface BtPairingRequest {
 }
 
 const ERROR_TEXT: Record<string, string> = {
-	"not-found": "Refresh and try again",
-	unsupported: "Bloom can connect headphones and speakers only",
-	timeout: "The device didn't answer in time",
-	cancelled: "Pairing was cancelled",
-	failed: "Couldn't pair with this device",
-	"not-ready": "Put the device in pairing mode first"
+	get "not-found"() {
+		return t("ui.bluetoothPanel.refreshAndTryAgain");
+	},
+	get unsupported() {
+		return t("ui.bluetoothPanel.bloomCanConnectHeadphonesAndSpeakersOnly");
+	},
+	get timeout() {
+		return t("ui.bluetoothPanel.theDeviceDidnTAnswerInTime");
+	},
+	get cancelled() {
+		return t("ui.bluetoothPanel.pairingWasCancelled");
+	},
+	get failed() {
+		return t("ui.bluetoothPanel.couldnTPairWithThisDevice");
+	},
+	get "not-ready"() {
+		return t("ui.bluetoothPanel.putTheDeviceInPairingModeFirst");
+	}
 };
 
 const errorText = (e: unknown) => ERROR_TEXT[String(e)] ?? String(e);
@@ -81,6 +94,7 @@ interface BluetoothPanelProps {
 }
 
 export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: BluetoothPanelProps) {
+	useTranslation();
 	const [devices, setDevices] = useState<BtDevice[] | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
@@ -199,9 +213,12 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 	};
 
 	const statusText = (d: BtDevice) => {
-		if (busy === d.id) return d.connected ? "Disconnecting…" : "Connecting…";
-		if (!d.connected) return "Not connected";
-		return d.battery !== null ? `Connected · ${d.battery}%` : "Connected";
+		if (busy === d.id)
+			return d.connected ? t("ui.bluetoothPanel.disconnecting") : t("ui.bluetoothPanel.connecting");
+		if (!d.connected) return t("notch.commandCenter.notConnected");
+		return d.battery !== null
+			? t("ui.bluetoothPanel.connectedValue1", { value1: d.battery })
+			: t("notch.commandCenter.connected");
 	};
 
 	const renderPrompt = () => {
@@ -209,8 +226,9 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		if (prompt.kind === "display") {
 			return (
 				<span className="qp-note">
-					Type <strong className="qp-pin">{prompt.pin}</strong> on the device, then press Enter on
-					it.
+					{t("ui.bluetoothPanel.type")}
+					<strong className="qp-pin">{prompt.pin}</strong>{" "}
+					{t("ui.bluetoothPanel.onTheDeviceThenPressEnterOnIt")}
 				</span>
 			);
 		}
@@ -218,14 +236,15 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			return (
 				<>
 					<span className="qp-note">
-						Does the device show <strong className="qp-pin">{prompt.pin}</strong>?
+						{t("ui.bluetoothPanel.doesTheDeviceShow")}
+						<strong className="qp-pin">{prompt.pin}</strong>?
 					</span>
 					<div className="qp-btn-row">
 						<button className="qp-btn primary" onClick={() => answer(true)}>
-							Yes, pair
+							{t("ui.bluetoothPanel.yesPair")}
 						</button>
 						<button className="qp-btn" onClick={() => answer(false)}>
-							No
+							{t("ui.bluetoothPanel.no")}
 						</button>
 					</div>
 				</>
@@ -235,7 +254,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			<>
 				<input
 					className="qp-input"
-					placeholder="PIN shown on the device"
+					placeholder={t("ui.bluetoothPanel.pinShownOnTheDevice")}
 					autoFocus
 					value={pin}
 					onChange={(e) => setPin(e.target.value)}
@@ -247,10 +266,10 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 				/>
 				<div className="qp-btn-row">
 					<button className="qp-btn primary" disabled={!pin} onClick={() => answer(true)}>
-						Pair
+						{t("ui.bluetoothPanel.pair")}
 					</button>
 					<button className="qp-btn" onClick={() => answer(false)}>
-						Cancel
+						{t("common.cancel")}
 					</button>
 				</div>
 			</>
@@ -262,7 +281,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			return (
 				<div className="qp-empty">
 					<LoaderCircle className="qp-spin" />
-					<span>Looking for devices. Make sure yours is in pairing mode.</span>
+					<span>{t("ui.bluetoothPanel.lookingForDevicesMakeSureYoursIsInPairingMode")}</span>
 				</div>
 			);
 		}
@@ -282,7 +301,11 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 								</span>
 								<span className="qp-row-text">
 									<span className="qp-row-name">{d.name}</span>
-									<span className="qp-row-sub">{isPairing ? "Pairing…" : "Click to pair"}</span>
+									<span className="qp-row-sub">
+										{isPairing
+											? t("ui.bluetoothPanel.pairing")
+											: t("ui.bluetoothPanel.clickToPair")}
+									</span>
 								</span>
 								{isPairing && <LoaderCircle className="qp-row-badge qp-spin" />}
 							</button>
@@ -304,8 +327,8 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		const picked = deviceLookFor(d.name);
 		const shown = picked ?? deviceArtFor(d);
 		return (
-			<div className="qp-chips" role="radiogroup" aria-label="Looks like">
-				<span className="qp-note">Looks like</span>
+			<div className="qp-chips" role="radiogroup" aria-label={t("ui.bluetoothPanel.looksLike")}>
+				<span className="qp-note">{t("ui.bluetoothPanel.looksLike")}</span>
 				{DEVICE_LOOKS.map((look) => (
 					<button
 						key={look.art}
@@ -337,9 +360,9 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		if (devices.length === 0) {
 			return (
 				<div className="qp-empty">
-					<span>No paired devices</span>
+					<span>{t("ui.bluetoothPanel.noPairedDevices")}</span>
 					<button className="qp-btn" onClick={() => setAdding(true)}>
-						Add device
+						{t("ui.bluetoothPanel.addDevice")}
 					</button>
 				</div>
 			);
@@ -372,7 +395,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 									{d.kind === "audio" && renderLooks(d)}
 									{!d.can_connect && (
 										<span className="qp-note">
-											Connects on its own when it's turned on and in range.
+											{t("ui.bluetoothPanel.connectsOnItsOwnWhenItSTurnedOnAnd")}
 										</span>
 									)}
 									<div className="qp-btn-row">
@@ -385,14 +408,14 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 												{isBusy ? (
 													<LoaderCircle className="qp-spin" />
 												) : d.connected ? (
-													"Disconnect"
+													t("ui.bluetoothPanel.disconnect")
 												) : (
-													"Connect"
+													t("ui.bluetoothPanel.connect")
 												)}
 											</button>
 										)}
 										<button className="qp-btn" disabled={isBusy} onClick={() => void remove(d)}>
-											Remove
+											{t("common.remove")}
 										</button>
 									</div>
 								</div>
@@ -411,18 +434,22 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 				<button
 					className="qp-icon-btn"
 					onClick={adding ? () => setAdding(false) : onBack}
-					aria-label={adding ? "Back to devices" : "Back to controls"}
+					aria-label={
+						adding ? t("ui.bluetoothPanel.backToDevices") : t("ui.bluetoothPanel.backToControls")
+					}
 				>
 					<ChevronLeft />
 				</button>
-				<span className="qp-title">{adding ? "Add a device" : "Bluetooth"}</span>
+				<span className="qp-title">
+					{adding ? t("ui.bluetoothPanel.addADevice") : t("notch.commandCenter.bluetooth")}
+				</span>
 				{!adding && (
 					<button
 						className="qp-icon-btn"
 						onClick={() => setAdding(true)}
 						disabled={!enabled}
-						aria-label="Add a device"
-						title="Add a device"
+						aria-label={t("ui.bluetoothPanel.addADevice")}
+						title={t("ui.bluetoothPanel.addADevice")}
 					>
 						<Plus />
 					</button>
@@ -431,7 +458,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 					className={`qp-switch ${enabled ? "on" : ""}`}
 					role="switch"
 					aria-checked={enabled}
-					aria-label="Bluetooth"
+					aria-label={t("notch.commandCenter.bluetooth")}
 					onClick={onToggle}
 				>
 					<span />
@@ -439,7 +466,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			</div>
 			<div className="qp-body">
 				{!enabled ? (
-					<div className="qp-empty">Bluetooth is off</div>
+					<div className="qp-empty">{t("ui.bluetoothPanel.bluetoothIsOff")}</div>
 				) : adding ? (
 					renderNearby()
 				) : (
@@ -447,7 +474,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 				)}
 			</div>
 			<button className="qp-footer" onClick={() => invoke("open_bluetooth_settings")}>
-				More Bluetooth settings
+				{t("ui.bluetoothPanel.moreBluetoothSettings")}
 			</button>
 		</div>
 	);

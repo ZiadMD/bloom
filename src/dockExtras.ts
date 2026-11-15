@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 export interface DockExtra {
 	id: string;
 	kind: "drive" | "folder" | "recycle-bin" | "custom";
@@ -13,12 +14,42 @@ export interface CustomFolder {
 }
 
 export const KNOWN_FOLDER_OPTIONS = [
-	{ id: "desktop", label: "Desktop" },
-	{ id: "downloads", label: "Downloads" },
-	{ id: "documents", label: "Documents" },
-	{ id: "pictures", label: "Pictures" },
-	{ id: "music", label: "Music" },
-	{ id: "videos", label: "Videos" }
+	{
+		id: "desktop",
+		get label() {
+			return t("ui.dockExtras.desktop");
+		}
+	},
+	{
+		id: "downloads",
+		get label() {
+			return t("ui.dockExtras.downloads");
+		}
+	},
+	{
+		id: "documents",
+		get label() {
+			return t("ui.dockExtras.documents");
+		}
+	},
+	{
+		id: "pictures",
+		get label() {
+			return t("ui.dockExtras.pictures");
+		}
+	},
+	{
+		id: "music",
+		get label() {
+			return t("ui.dockExtras.music");
+		}
+	},
+	{
+		id: "videos",
+		get label() {
+			return t("ui.dockExtras.videos");
+		}
+	}
 ];
 
 export const DEFAULT_ENABLED_FOLDERS = "downloads";

@@ -180,3 +180,7 @@ Licensed under [GPLv3](LICENSE).
 **Your desktop is waiting.**
 
 </div>
+
+## Translations
+
+Help bring Bloom to your language—no coding needed. See [the translation guide](TRANSLATING.md). Partial translations are welcome; untranslated messages use English.

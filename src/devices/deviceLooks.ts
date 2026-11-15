@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { invoke } from "@tauri-apps/api/core";
 import type { DeviceArtKey } from "./art";
 
@@ -7,21 +8,71 @@ import type { DeviceArtKey } from "./art";
  * headphones, and many are named with a model code).
  */
 export const DEVICE_LOOKS: { art: DeviceArtKey; label: string }[] = [
-	{ art: "headphones", label: "Headphones" },
-	{ art: "round-buds", label: "Earbuds" },
-	{ art: "stem-buds", label: "Stem buds" },
-	{ art: "neckband", label: "Neckband" },
-	{ art: "speaker", label: "Speaker" }
+	{
+		art: "headphones",
+		get label() {
+			return t("ui.deviceLooks.headphones");
+		}
+	},
+	{
+		art: "round-buds",
+		get label() {
+			return t("ui.deviceLooks.earbuds");
+		}
+	},
+	{
+		art: "stem-buds",
+		get label() {
+			return t("ui.deviceLooks.stemBuds");
+		}
+	},
+	{
+		art: "neckband",
+		get label() {
+			return t("ui.deviceLooks.neckband");
+		}
+	},
+	{
+		art: "speaker",
+		get label() {
+			return t("ui.deviceLooks.speaker");
+		}
+	}
 ];
 
 /** The same, for wired and USB audio devices, which Windows only knows as an
  * audio output or microphone. */
 export const WIRED_DEVICE_LOOKS: { art: DeviceArtKey; label: string }[] = [
-	{ art: "headphones-wired", label: "Headphones" },
-	{ art: "earbuds-usbc", label: "Earbuds (USB-C)" },
-	{ art: "earbuds-jack", label: "Earbuds (3.5 mm)" },
-	{ art: "speaker", label: "Speaker" },
-	{ art: "microphone", label: "Microphone" }
+	{
+		art: "headphones-wired",
+		get label() {
+			return t("ui.deviceLooks.headphones");
+		}
+	},
+	{
+		art: "earbuds-usbc",
+		get label() {
+			return t("ui.deviceLooks.earbudsUsbC");
+		}
+	},
+	{
+		art: "earbuds-jack",
+		get label() {
+			return t("ui.deviceLooks.earbuds35Mm");
+		}
+	},
+	{
+		art: "speaker",
+		get label() {
+			return t("ui.deviceLooks.speaker");
+		}
+	},
+	{
+		art: "microphone",
+		get label() {
+			return t("ui.deviceLooks.microphone");
+		}
+	}
 ];
 
 const KEY = "bloom-device-looks";

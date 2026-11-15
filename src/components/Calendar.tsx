@@ -1,3 +1,4 @@
+import { t, useTranslation, getLocale } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
@@ -14,10 +15,6 @@ export function calendarRows(month: Date, mondayFirst = false): number {
 	);
 }
 
-const monthNames = Array.from({ length: 12 }, (_, month) =>
-	new Date(2024, month, 1).toLocaleString("default", { month: "long" })
-);
-
 export function Calendar({
 	month,
 	mondayFirst = false,
@@ -27,6 +24,10 @@ export function Calendar({
 	mondayFirst?: boolean;
 	onMonthChange: (month: Date) => void;
 }) {
+	useTranslation();
+	const monthNames = Array.from({ length: 12 }, (_, month) =>
+		new Date(2024, month, 1).toLocaleString(getLocale(), { month: "long" })
+	);
 	const [today, setToday] = useState(() => new Date());
 	const lastWheel = useRef(0);
 	const [editing, setEditing] = useState(false);
@@ -52,7 +53,7 @@ export function Calendar({
 		<div
 			className="calendar-container"
 			tabIndex={0}
-			aria-label="Calendar. Page Up and Page Down change month; hold Shift to change year. Home returns to today."
+			aria-label={t("ui.calendar.calendarPageUpAndPageDownChangeMonthHoldShift")}
 			onKeyDown={(event) => {
 				if ((event.target as HTMLElement).matches("input, select, button")) return;
 				if (event.key === "PageUp" || event.key === "PageDown") {
@@ -85,7 +86,7 @@ export function Calendar({
 					<div className="calendar-month-picker">
 						<select
 							autoFocus
-							aria-label="Month"
+							aria-label={t("ui.calendar.month")}
 							value={monthIndex}
 							onFocus={() => {
 								void getCurrentWebviewWindow().setFocus().catch(console.error);
@@ -101,7 +102,7 @@ export function Calendar({
 						<input
 							key={year}
 							type="number"
-							aria-label="Year"
+							aria-label={t("ui.calendar.year")}
 							min={100}
 							max={9999}
 							defaultValue={year}
@@ -123,7 +124,7 @@ export function Calendar({
 						/>
 						<button
 							type="button"
-							aria-label="Done choosing month"
+							aria-label={t("ui.calendar.doneChoosingMonth")}
 							onClick={() => setEditing(false)}
 						>
 							<Check size={13} />
@@ -135,23 +136,27 @@ export function Calendar({
 							type="button"
 							className="calendar-heading"
 							onClick={() => setEditing(true)}
-							title="Change month or year. Scroll to browse; Shift + scroll changes year."
+							title={t("ui.calendar.changeMonthOrYearScrollToBrowseShiftScrollChanges")}
 						>
 							{monthNames[monthIndex]} {year}
 						</button>
-						<div className="calendar-navigation" role="group" aria-label="Browse months">
+						<div
+							className="calendar-navigation"
+							role="group"
+							aria-label={t("ui.calendar.browseMonths")}
+						>
 							<button
 								type="button"
-								aria-label="Previous month"
-								title="Previous month"
+								aria-label={t("ui.calendar.previousMonth")}
+								title={t("ui.calendar.previousMonth")}
 								onClick={() => changeMonth(-1)}
 							>
 								<ChevronLeft size={13} />
 							</button>
 							<button
 								type="button"
-								aria-label="Next month"
-								title="Next month"
+								aria-label={t("ui.calendar.nextMonth")}
+								title={t("ui.calendar.nextMonth")}
 								onClick={() => changeMonth(1)}
 							>
 								<ChevronRight size={13} />
@@ -169,18 +174,19 @@ export function Calendar({
 						setEditing(false);
 					}}
 				>
-					Today
+					{t("ui.calendar.today")}
 				</button>
 			</div>
 			<div
 				className="calendar-grid"
-				aria-label={month.toLocaleDateString("default", { month: "long", year: "numeric" })}
+				aria-label={month.toLocaleDateString(getLocale(), { month: "long", year: "numeric" })}
 			>
-				{(mondayFirst
-					? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-					: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-				).map((day) => (
-					<div key={day} className="day-name">
+				{Array.from({ length: 7 }, (_, index) =>
+					new Intl.DateTimeFormat(getLocale(), { weekday: "short" }).format(
+						new Date(2024, 0, 7 + index + (mondayFirst ? 1 : 0))
+					)
+				).map((day, index) => (
+					<div key={index} className="day-name">
 						{day}
 					</div>
 				))}

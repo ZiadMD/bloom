@@ -1,3 +1,4 @@
+import { t, tCount, useTranslation, resolveLanguage, setLocale } from "./i18n";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
@@ -153,11 +154,14 @@ const ITEM_EXIT = { opacity: 0, scale: 0 };
 
 // One dot per open window, capped at three.
 function WindowDots({ count, background }: { count: number; background?: boolean }) {
+	useTranslation();
 	return (
 		<div
 			className="window-dots"
 			role="img"
-			aria-label={background ? "Running in background" : `${count} open windows`}
+			aria-label={
+				background ? t("ui.dock.runningInBackground") : tCount("ui.dock.countOpenWindows", count)
+			}
 		>
 			{Array.from({ length: background ? 1 : Math.min(Math.max(count, 1), 3) }, (_, i) => (
 				<div key={i} className={`active-indicator${background ? " background-indicator" : ""}`} />
@@ -167,6 +171,8 @@ function WindowDots({ count, background }: { count: number; background?: boolean
 }
 
 const Dock = memo(function Dock() {
+	useTranslation();
+
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -401,6 +407,8 @@ const Dock = memo(function Dock() {
 				return fallback;
 			};
 
+			setLocale(resolveLanguage(getVal("bloom-language")));
+
 			const dMode = getVal("bloom-dock-mode", "smart");
 			if (dMode) {
 				const mapped = dMode === "auto-hide" ? "smart" : dMode;
@@ -507,6 +515,10 @@ const Dock = memo(function Dock() {
 		"bloom-dock-task-view": setDockTaskView,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale,
+		"bloom-language": {
+			set: (value) => setLocale(resolveLanguage(String(value))),
+			defaultValue: "system"
+		},
 		"bloom-dock-extras-position": setDockExtrasPosition,
 		"bloom-dock-extras-drives": () => setDockExtrasRevision((r) => r + 1),
 		"bloom-dock-extras-recycle-bin": () => setDockExtrasRevision((r) => r + 1),
@@ -667,7 +679,7 @@ const Dock = memo(function Dock() {
 				});
 				setCustomIcons((prev) => ({ ...prev, [target]: newIcon }));
 			} catch (err) {
-				const msg = typeof err === "string" ? err : "Failed to set icon";
+				const msg = typeof err === "string" ? err : t("dock.toast.setIconFailed");
 				if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
 				setToast(msg);
 				toastTimerRef.current = setTimeout(() => setToast(null), 4000);
@@ -873,9 +885,7 @@ const Dock = memo(function Dock() {
 	const hideTaskView = () => {
 		setDockTaskView(false);
 		localStorage.setItem("bloom-dock-task-view", "false");
-		invoke("save_setting", { key: "bloom-dock-task-view", value: "false" }).catch(
-			showActionError
-		);
+		invoke("save_setting", { key: "bloom-dock-task-view", value: "false" }).catch(showActionError);
 		closeMenu();
 	};
 
@@ -1382,7 +1392,12 @@ const Dock = memo(function Dock() {
 					style={{ originX: 0.5, originY: 1, minWidth: 34 }}
 					onContextMenu={(e) => handleContextMenu(e, null)}
 				>
-					<EdgeSurface edge="bottom" flares={isExpanded && !isHidden} reflective={edgeShineEnabled} resolutionScale={scale} />
+					<EdgeSurface
+						edge="bottom"
+						flares={isExpanded && !isHidden}
+						reflective={edgeShineEnabled}
+						resolutionScale={scale}
+					/>
 					<AnimatePresence>
 						{isExpanded && (
 							<motion.div
@@ -1411,7 +1426,7 @@ const Dock = memo(function Dock() {
 									>
 										{(!dockPreviewEnabled ||
 											(dockPreviewEnabled && hoveredApp === itemKey(startItem))) && (
-											<div className="tooltip">{startItem.name}</div>
+											<div className="tooltip">{t("dock.tooltip.start")}</div>
 										)}
 										<motion.div
 											className="dock-icon"
@@ -1433,7 +1448,7 @@ const Dock = memo(function Dock() {
 										>
 											<img
 												src={resolveStartIcon(startIcon)}
-												alt="Start"
+												alt={t("dock.tooltip.start")}
 												className="bloom-icon-img"
 												style={
 													startIcon.startsWith("custom:") ? { borderRadius: "8px" } : undefined
@@ -1463,7 +1478,7 @@ const Dock = memo(function Dock() {
 										}}
 									>
 										{(!dockPreviewEnabled || hoveredApp === "task-view") && (
-											<div className="tooltip">Task View</div>
+											<div className="tooltip">{t("ui.dock.taskView")}</div>
 										)}
 										<motion.div
 											className="dock-icon"
@@ -1569,12 +1584,15 @@ const Dock = memo(function Dock() {
 																			className="preview-item"
 																			onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
 																		>
-																			<img src={prev.image} alt={`Preview ${idx}`} />
+																			<img
+																				src={prev.image}
+																				alt={t("dock.preview.imageAlt", { index: idx })}
+																			/>
 																			<div className="preview-label">{prev.title || app.name}</div>
 																			<button
 																				className="preview-close-btn"
 																				onClick={(e) => handleClosePreview(e, prev.hwnd)}
-																				title="Close Window"
+																				title={t("dock.tooltip.closeWindow")}
 																			>
 																				<svg
 																					width="10"
@@ -1636,7 +1654,9 @@ const Dock = memo(function Dock() {
 															iconsRef.current[cacheKey] ||
 															(allowPathFallback && iconsRef.current[app.path]) ||
 															app.icon ||
-															(app.path === "bloom-settings" ? "/bloom-settings-sliders.png" : undefined);
+															(app.path === "bloom-settings"
+																? "/bloom-settings-sliders.png"
+																: undefined);
 
 														const isBloomOrSettings =
 															app.name.toLowerCase() === "settings" ||
@@ -1647,7 +1667,13 @@ const Dock = memo(function Dock() {
 															<img
 																src={icon}
 																alt={app.name}
-																className={icon === "/bloom-settings-sliders.png" ? "bloom-settings-icon" : isBloomOrSettings && app.path !== "bloom-settings" ? "bloom-icon-img" : ""}
+																className={
+																	icon === "/bloom-settings-sliders.png"
+																		? "bloom-settings-icon"
+																		: isBloomOrSettings && app.path !== "bloom-settings"
+																			? "bloom-icon-img"
+																			: ""
+																}
 																draggable={false}
 															/>
 														) : (
@@ -1735,12 +1761,15 @@ const Dock = memo(function Dock() {
 																	className="preview-item"
 																	onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
 																>
-																	<img src={prev.image} alt={`Preview ${idx}`} />
+																	<img
+																		src={prev.image}
+																		alt={t("dock.preview.imageAlt", { index: idx })}
+																	/>
 																	<div className="preview-label">{prev.title || app.name}</div>
 																	<button
 																		className="preview-close-btn"
 																		onClick={(e) => handleClosePreview(e, prev.hwnd)}
-																		title="Close Window"
+																		title={t("dock.tooltip.closeWindow")}
 																	>
 																		<svg
 																			width="10"
@@ -1797,7 +1826,9 @@ const Dock = memo(function Dock() {
 													iconsRef.current[cacheKey] ||
 													(allowPathFallback && iconsRef.current[app.path]) ||
 													app.icon ||
-													(app.path === "bloom-settings" ? "/bloom-settings-sliders.png" : undefined);
+													(app.path === "bloom-settings"
+														? "/bloom-settings-sliders.png"
+														: undefined);
 												const isBloomOrSettings =
 													app.name.toLowerCase() === "settings" ||
 													app.name.toLowerCase() === "bloom" ||
@@ -1806,7 +1837,13 @@ const Dock = memo(function Dock() {
 													<img
 														src={icon}
 														alt={app.name}
-														className={icon === "/bloom-settings-sliders.png" ? "bloom-settings-icon" : isBloomOrSettings && app.path !== "bloom-settings" ? "bloom-icon-img" : ""}
+														className={
+															icon === "/bloom-settings-sliders.png"
+																? "bloom-settings-icon"
+																: isBloomOrSettings && app.path !== "bloom-settings"
+																	? "bloom-icon-img"
+																	: ""
+														}
 														draggable={false}
 													/>
 												) : (
@@ -1854,42 +1891,42 @@ const Dock = memo(function Dock() {
 					{!contextMenu.extra &&
 						!contextMenu.taskView &&
 						(!contextMenu.app || contextMenu.app.path === "start") && (
-						<div
-							style={{
-								maxHeight: Math.max(64, window.innerHeight / scale - 200),
-								overflowY: "auto"
-							}}
-						>
-							{(contextMenu.app
-								? [
-										["installed-apps", "Installed Apps"],
-										["power-options", "Power Options"],
-										["device-manager", "Device Manager"],
-										["network-connections", "Network Connections"],
-										["disk-management", "Disk Management"],
-										["computer-management", "Computer Management"],
-										["task-manager", "Task Manager"],
-										["settings", "Settings"]
-									]
-								: [
-										["task-manager", "Task Manager"],
-										["taskbar-settings", "Taskbar Settings"]
-									]
-							).map(([action, label]) => (
-								<div
-									key={action}
-									className="menu-item"
-									onClick={() => {
-										closeMenu();
-										invoke("open_system_action", { action }).catch(showActionError);
-									}}
-								>
-									{label}
-								</div>
-							))}
-							<div className="menu-divider" />
-						</div>
-					)}
+							<div
+								style={{
+									maxHeight: Math.max(64, window.innerHeight / scale - 200),
+									overflowY: "auto"
+								}}
+							>
+								{(contextMenu.app
+									? [
+											["installed-apps", "Installed Apps"],
+											["power-options", t("ui.dock.powerOptions")],
+											["device-manager", t("ui.dock.deviceManager")],
+											["network-connections", t("ui.dock.networkConnections")],
+											["disk-management", t("ui.dock.diskManagement")],
+											["computer-management", t("ui.dock.computerManagement")],
+											["task-manager", t("ui.dock.taskManager")],
+											["settings", t("settings.title")]
+										]
+									: [
+											["task-manager", t("ui.dock.taskManager")],
+											["taskbar-settings", t("ui.dock.taskbarSettings")]
+										]
+								).map(([action, label]) => (
+									<div
+										key={action}
+										className="menu-item"
+										onClick={() => {
+											closeMenu();
+											invoke("open_system_action", { action }).catch(showActionError);
+										}}
+									>
+										{label}
+									</div>
+								))}
+								<div className="menu-divider" />
+							</div>
+						)}
 					{contextMenu.extra ? (
 						<>
 							<div
@@ -1900,11 +1937,11 @@ const Dock = memo(function Dock() {
 									handleExtraClick(extra);
 								}}
 							>
-								Open
+								{t("ui.dock.open")}
 							</div>
 							{contextMenu.extra.kind === "drive" && contextMenu.extra.removable && (
 								<div className="menu-item" onClick={() => ejectExtra(contextMenu.extra!)}>
-									Eject
+									{t("ui.dock.eject")}
 								</div>
 							)}
 							{contextMenu.extra.kind === "drive" && (
@@ -1914,7 +1951,7 @@ const Dock = memo(function Dock() {
 										className="menu-item quit"
 										onClick={() => hideDriveFromDock(contextMenu.extra!)}
 									>
-										Remove from Dock
+										{t("ui.dock.removeFromDock")}
 									</div>
 								</>
 							)}
@@ -1925,7 +1962,7 @@ const Dock = memo(function Dock() {
 										className="menu-item quit"
 										onClick={() => removeExtraFromDock(contextMenu.extra!)}
 									>
-										Remove from Dock
+										{t("ui.dock.removeFromDock")}
 									</div>
 								</>
 							)}
@@ -1939,17 +1976,17 @@ const Dock = memo(function Dock() {
 									openTaskView();
 								}}
 							>
-								Open Task View
+								{t("ui.dock.openTaskView")}
 							</div>
 							<div className="menu-divider" />
 							<div className="menu-item" onClick={hideTaskView}>
-								Hide Task View
+								{t("ui.dock.hideTaskView")}
 							</div>
 						</>
 					) : contextMenu.app ? (
 						<>
 							<div className="menu-item" onClick={() => togglePin(contextMenu.app!)}>
-								{contextMenu.app.is_pinned ? "Unpin from Dock" : "Pin to Dock"}
+								{contextMenu.app.is_pinned ? t("dock.menu.unpin") : t("dock.menu.pin")}
 							</div>
 							{contextMenu.app.is_pinned && contextMenu.app.path !== "start" && (
 								<>
@@ -1968,7 +2005,7 @@ const Dock = memo(function Dock() {
 											}, 50);
 										}}
 									>
-										Change Icon...
+										{t("dock.menu.changeIcon")}
 									</div>
 									{(() => {
 										const isHost = isBrowserHost(contextMenu.app!.path);
@@ -1983,7 +2020,7 @@ const Dock = memo(function Dock() {
 													closeMenu();
 												}}
 											>
-												Reset Icon
+												{t("dock.menu.resetIcon")}
 											</div>
 										) : null;
 									})()}
@@ -1997,14 +2034,14 @@ const Dock = memo(function Dock() {
 									closeMenu();
 								}}
 							>
-								Add App to Dock...
+								{t("dock.menu.addApp")}
 							</div>
 							<div
 								className="menu-item has-submenu"
 								onMouseEnter={() => setActiveSubmenu("bloom")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Bloom Options
+								{t("dock.menu.bloomOptions")}
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -2014,10 +2051,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Open Settings
+										{t("dock.options.openSettings")}
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_bloom")}>
-										Restart Bloom
+										{t("dock.options.restart")}
 									</div>
 									<div
 										className="menu-item"
@@ -2026,11 +2063,11 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Clear Icon Cache
+										{t("dock.options.clearIconCache")}
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_bloom")}>
-										Quit Bloom
+										{t("dock.options.quit")}
 									</div>
 								</div>
 							</div>
@@ -2045,7 +2082,9 @@ const Dock = memo(function Dock() {
 										<div className="menu-divider" />
 										{app.tray_ids?.map((id, index, ids) => (
 											<div key={id} className="menu-item" onClick={() => void openTrayMenu(id)}>
-												{ids.length > 1 ? `Tray menu ${index + 1}` : "App tray menu"}
+												{ids.length > 1
+													? t("ui.dock.trayMenuValue1", { value1: index + 1 })
+													: t("ui.dock.appTrayMenu")}
 											</div>
 										))}
 										{canOpenNew && (
@@ -2056,7 +2095,7 @@ const Dock = memo(function Dock() {
 													closeMenu();
 												}}
 											>
-												Open New Instance
+												{t("dock.menu.openNewInstance")}
 											</div>
 										)}
 									</>
@@ -2079,10 +2118,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Close{" "}
+										{t("ui.dock.close")}{" "}
 										{contextMenu.app.all_hwnds && contextMenu.app.all_hwnds.length > 1
-											? "all windows"
-											: "window"}
+											? t("ui.dock.allWindows")
+											: t("ui.dock.window")}
 									</div>
 								</>
 							)}
@@ -2096,14 +2135,14 @@ const Dock = memo(function Dock() {
 									closeMenu();
 								}}
 							>
-								Add App to Dock...
+								{t("dock.menu.addApp")}
 							</div>
 							<div
 								className="menu-item has-submenu"
 								onMouseEnter={() => setActiveSubmenu("bloom")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Bloom Options
+								{t("dock.menu.bloomOptions")}
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -2113,10 +2152,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Open Settings
+										{t("dock.options.openSettings")}
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_bloom")}>
-										Restart Bloom
+										{t("dock.options.restart")}
 									</div>
 									<div
 										className="menu-item"
@@ -2125,11 +2164,11 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Clear Icon Cache
+										{t("dock.options.clearIconCache")}
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_bloom")}>
-										Quit Bloom
+										{t("dock.options.quit")}
 									</div>
 								</div>
 							</div>
@@ -2198,6 +2237,7 @@ function AddAppPopup({
 	pinned: AppInfo[];
 	bottom: number;
 }) {
+	useTranslation();
 	const [apps, setApps] = useState<AppInfo[]>([]);
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -2247,8 +2287,9 @@ function AddAppPopup({
 				)
 				.slice(0, 60);
 			const out: { title: string | null; items: AppInfo[] }[] = [];
-			if (runningSuggestions.length > 0) out.push({ title: "Running", items: runningSuggestions });
-			if (rest.length > 0) out.push({ title: "All apps", items: rest });
+			if (runningSuggestions.length > 0)
+				out.push({ title: t("dock.addApp.running"), items: runningSuggestions });
+			if (rest.length > 0) out.push({ title: t("dock.addApp.allApps"), items: rest });
 			return out;
 		}
 		const starts: AppInfo[] = [];
@@ -2410,7 +2451,7 @@ function AddAppPopup({
 						ref={inputRef}
 						type="text"
 						className="popup-search-input"
-						placeholder="Search apps..."
+						placeholder={t("dock.addApp.searchPlaceholder")}
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 					/>
@@ -2466,9 +2507,7 @@ function AddAppPopup({
 						))
 					) : (
 						<div className="popup-empty">
-							{debouncedSearch.trim()
-								? "No results"
-								: "Running apps show up here — search to pin anything else"}
+							{debouncedSearch.trim() ? t("dock.addApp.noResults") : t("dock.addApp.emptyHint")}
 						</div>
 					)}
 				</div>

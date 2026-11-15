@@ -1,4 +1,12 @@
-import { StrictMode, useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import {
+	StrictMode,
+	useState,
+	useEffect,
+	useRef,
+	useCallback,
+	useLayoutEffect,
+	useMemo
+} from "react";
 import { createRoot } from "react-dom/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -7,6 +15,7 @@ import { useSettingsSync } from "./hooks/useSettingsSync";
 import { useTrailingThrottle } from "./hooks/useTrailingThrottle";
 import { getVersion } from "@tauri-apps/api/app";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
+import { t, initI18n, resolveLanguage, setLocale, useTranslation } from "./i18n";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
@@ -65,6 +74,7 @@ function MixerTile({
 	onMuteToggle: (pid: number) => void;
 	draggingRef: { current: number | null };
 }) {
+	useTranslation();
 	const [icon, setIcon] = useState<string | null>(null);
 	const [showPercentage, setShowPercentage] = useState(false);
 	const barRef = useRef<HTMLDivElement>(null);
@@ -141,7 +151,7 @@ function MixerTile({
 					showPercentage ? "showing-percent" : ""
 				}`}
 				onClick={() => onMuteToggle(session.pid)}
-				title={session.is_muted ? "Unmute" : "Mute"}
+				title={session.is_muted ? t("overlay.volume.unmute") : t("overlay.volume.mute")}
 			>
 				{icon ? (
 					<img src={icon} alt="" draggable={false} />
@@ -193,6 +203,7 @@ function VolumeNotch({
 	mixerExpanded: boolean;
 	onMixerExpandedChange: (expanded: boolean) => void;
 }) {
+	useTranslation();
 	const percentage = Math.round(volume * 100);
 	const barRef = useRef<HTMLDivElement>(null);
 	const shellRef = useRef<HTMLDivElement>(null);
@@ -361,11 +372,11 @@ function VolumeNotch({
 	};
 
 	const startDrag = useMouseSliderDrag((clientY) => {
-			if (!barRef.current) return;
-			const rect = barRef.current.getBoundingClientRect();
-			const relativeY = rect.bottom - clientY;
-			const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
-			onVolumeChange(newVolume);
+		if (!barRef.current) return;
+		const rect = barRef.current.getBoundingClientRect();
+		const relativeY = rect.bottom - clientY;
+		const newVolume = Math.max(0, Math.min(1, relativeY / rect.height));
+		onVolumeChange(newVolume);
 	});
 	const handleMouseDown = (e: React.MouseEvent) => {
 		startDrag(e.clientY);
@@ -436,7 +447,7 @@ function VolumeNotch({
 							e.stopPropagation();
 							onMixerExpandedChange(!mixerExpanded);
 						}}
-						title="App volume mixer"
+						title={t("overlay.volume.mixer")}
 					>
 						<span className="volume-notch-action-icon">
 							<SpeakerIcon size={16} muted={isMuted} />
@@ -471,10 +482,10 @@ function VolumeNotch({
 								{sessions.length === 0 ? (
 									<div className="volume-mixer-empty">
 										{!sessionsLoaded
-											? "Loading..."
+											? t("overlay.volume.loading")
 											: sessionsError
-												? "Couldn't read audio sessions"
-												: "No apps with audio"}
+												? t("overlay.volume.sessionsError")
+												: t("overlay.volume.noApps")}
 									</div>
 								) : (
 									sessions.map((session) => (
@@ -535,11 +546,11 @@ function BrightnessNotch({
 	};
 
 	const startDrag = useMouseSliderDrag((clientY) => {
-			if (!barRef.current) return;
-			const rect = barRef.current.getBoundingClientRect();
-			const relativeY = rect.bottom - clientY;
-			const newBrightness = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
-			onBrightnessChange(newBrightness);
+		if (!barRef.current) return;
+		const rect = barRef.current.getBoundingClientRect();
+		const relativeY = rect.bottom - clientY;
+		const newBrightness = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
+		onBrightnessChange(newBrightness);
 	});
 	const handleMouseDown = (e: React.MouseEvent) => {
 		startDrag(e.clientY);
@@ -596,6 +607,8 @@ function BrightnessNotch({
 // ─── Main Overlay Component ─────────────────────────────────────────────────
 
 function OverlayApp() {
+	useTranslation();
+
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -690,6 +703,7 @@ function OverlayApp() {
 		invoke("load_settings")
 			.then(async (settings: any) => {
 				if (await reloadIfMirrorWasStale(settings)) return;
+				setLocale(resolveLanguage(settings?.["bloom-language"] ?? null));
 				if (settings && settings["bloom-scale"] !== undefined) {
 					setScale(parseFloat(settings["bloom-scale"]));
 				}
@@ -857,7 +871,11 @@ function OverlayApp() {
 		"bloom-volume-edge-enabled": setVolumeEdgeEnabled,
 		"bloom-brightness-overlay-enabled": setBrightnessOverlayEnabled,
 		"bloom-brightness-edge-enabled": setBrightnessEdgeEnabled,
-		"bloom-scale": setScale
+		"bloom-scale": setScale,
+		"bloom-language": {
+			set: (value) => setLocale(resolveLanguage(String(value))),
+			defaultValue: "system"
+		}
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -1060,9 +1078,10 @@ function OverlayApp() {
 					>
 						<img src="/bloom.png" className="update-splash-logo" alt="Bloom" />
 						<p className="update-splash-text">
-							{updateStatus === "checking" && "Checking for updates..."}
-							{updateStatus === "downloading" && `Downloading update... ${updateProgress}%`}
-							{updateStatus === "installing" && "Installing update..."}
+							{updateStatus === "checking" && t("overlay.update.checking")}
+							{updateStatus === "downloading" &&
+								t("overlay.update.downloading", { percent: updateProgress })}
+							{updateStatus === "installing" && t("overlay.update.installing")}
 						</p>
 						{updateStatus === "downloading" && (
 							<div className="update-progress-bar">
@@ -1114,6 +1133,8 @@ function OverlayApp() {
 		</div>
 	);
 }
+
+initI18n();
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>

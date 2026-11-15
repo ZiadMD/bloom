@@ -1,3 +1,4 @@
+import { t, useTranslation } from "../i18n";
 import { useEffect, useState } from "react";
 import {
 	HeadphonesIcon,
@@ -11,11 +12,22 @@ import {
 	VolumeLowIcon
 } from "../icons";
 
-const TRACKS = [
-	{ title: "Sample track", artist: "Bloom preview" },
-	{ title: "Next track", artist: "Bloom preview" },
-	{ title: "Another track", artist: "Bloom preview" }
-];
+function getTRACKS() {
+	return [
+		{
+			title: t("ui.previewMediaPlayer.sampleTrack"),
+			artist: t("ui.previewMediaPlayer.bloomPreview")
+		},
+		{
+			title: t("ui.previewMediaPlayer.nextTrack"),
+			artist: t("ui.previewMediaPlayer.bloomPreview")
+		},
+		{
+			title: t("ui.previewMediaPlayer.anotherTrack"),
+			artist: t("ui.previewMediaPlayer.bloomPreview")
+		}
+	];
+}
 
 function formatTime(seconds: number) {
 	return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -32,6 +44,7 @@ export function PreviewMediaPlayer({
 	volumeExpanded: boolean;
 	onVolumeExpandedChange: (expanded: boolean) => void;
 }) {
+	useTranslation();
 	const [track, setTrack] = useState(0);
 	const [playing, setPlaying] = useState(true);
 	const [position, setPosition] = useState(42);
@@ -41,27 +54,42 @@ export function PreviewMediaPlayer({
 
 	useEffect(() => {
 		if (!playing) return;
-		const timer = window.setInterval(() => setPosition((current) => (current >= duration ? 0 : current + 1)), 1000);
+		const timer = window.setInterval(
+			() => setPosition((current) => (current >= duration ? 0 : current + 1)),
+			1000
+		);
 		return () => window.clearInterval(timer);
 	}, [playing]);
 
 	const skip = (direction: number) => {
-		setTrack((current) => (current + direction + TRACKS.length) % TRACKS.length);
+		setTrack((current) => (current + direction + getTRACKS().length) % getTRACKS().length);
 		setPosition(0);
 	};
 	const controls = (
 		<>
-			<button type="button" aria-label="Previous sample track" onClick={() => skip(-1)}>
+			<button
+				type="button"
+				aria-label={t("ui.previewMediaPlayer.previousSampleTrack")}
+				onClick={() => skip(-1)}
+			>
 				<SkipBackIcon size={layout === "compact" ? 30 : 32} />
 			</button>
 			<button
 				type="button"
-				aria-label={playing ? "Pause sample track" : "Play sample track"}
+				aria-label={
+					playing
+						? t("ui.previewMediaPlayer.pauseSampleTrack")
+						: t("ui.previewMediaPlayer.playSampleTrack")
+				}
 				onClick={() => setPlaying((value) => !value)}
 			>
 				{playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}
 			</button>
-			<button type="button" aria-label="Next sample track" onClick={() => skip(1)}>
+			<button
+				type="button"
+				aria-label={t("ui.previewMediaPlayer.nextSampleTrack")}
+				onClick={() => skip(1)}
+			>
 				<SkipForwardIcon size={layout === "compact" ? 30 : 32} />
 			</button>
 		</>
@@ -80,7 +108,7 @@ export function PreviewMediaPlayer({
 					max={1}
 					step={0.01}
 					value={volume}
-					aria-label="Sample volume"
+					aria-label={t("ui.previewMediaPlayer.sampleVolume")}
 					className={layout === "compact" ? "cmp-volume-slider" : "premium-slider"}
 					onChange={(event) => setVolume(Number(event.target.value))}
 				/>
@@ -97,28 +125,33 @@ export function PreviewMediaPlayer({
 	);
 
 	return (
-		<div className="expanded-music-container settings-preview-player" onClick={(event) => event.stopPropagation()}>
+		<div
+			className="expanded-music-container settings-preview-player"
+			onClick={(event) => event.stopPropagation()}
+		>
 			{layout === "compact" ? (
 				<div className="cmp">
 					<div className="cmp-row cmp-row-info">
 						<button
 							type="button"
 							className="settings-preview-art-button"
-							aria-label="Show classic media layout"
-							title="Show classic layout"
+							aria-label={t("ui.previewMediaPlayer.showClassicMediaLayout")}
+							title={t("ui.previewMediaPlayer.showClassicLayout")}
 							onClick={() => onLayoutChange("classic")}
 						>
 							{art}
 						</button>
 						<div className="cmp-track">
 							<div className="cmp-marquee-wrap">
-								<span className="cmp-title">{TRACKS[track].title}</span>
+								<span className="cmp-title">{getTRACKS()[track].title}</span>
 							</div>
-							<span className="cmp-artist">{TRACKS[track].artist}</span>
+							<span className="cmp-artist">{getTRACKS()[track].artist}</span>
 						</div>
 						<div
 							className={`settings-preview-visualizer${playing ? " playing" : ""}`}
-							aria-label={playing ? "Playing" : "Paused"}
+							aria-label={
+								playing ? t("ui.previewMediaPlayer.playing") : t("ui.previewMediaPlayer.paused")
+							}
 						>
 							<i />
 							<i />
@@ -130,14 +163,17 @@ export function PreviewMediaPlayer({
 					<div className="cmp-row cmp-row-progress">
 						<span className="cmp-time">{formatTime(position)}</span>
 						<div className="cmp-track-bar">
-							<div className="cmp-track-fill" style={{ width: `${(position / duration) * 100}%` }} />
+							<div
+								className="cmp-track-fill"
+								style={{ width: `${(position / duration) * 100}%` }}
+							/>
 							<input
 								className="cmp-seek"
 								type="range"
 								min={0}
 								max={duration}
 								value={position}
-								aria-label="Sample track position"
+								aria-label={t("ui.previewMediaPlayer.sampleTrackPosition")}
 								onChange={(event) => setPosition(Number(event.target.value))}
 							/>
 						</div>
@@ -147,7 +183,7 @@ export function PreviewMediaPlayer({
 						<button
 							type="button"
 							className="cmp-btn cmp-btn-side"
-							aria-label="Show sample volume"
+							aria-label={t("ui.previewMediaPlayer.showSampleVolume")}
 							onClick={() => onVolumeExpandedChange(!volumeExpanded)}
 						>
 							<SpeakerIcon size={22} muted={volume === 0} />
@@ -158,15 +194,19 @@ export function PreviewMediaPlayer({
 						<button
 							type="button"
 							className="cmp-btn cmp-btn-side"
-							aria-label="Sample audio output"
-							title="Sample audio output"
+							aria-label={t("ui.previewMediaPlayer.sampleAudioOutput")}
+							title={t("ui.previewMediaPlayer.sampleAudioOutput")}
 							onClick={() => setOutputOpen((value) => !value)}
 						>
 							<HeadphonesIcon size={22} />
 						</button>
 					</div>
 					{volumeExpanded && <div className="cmp-expand">{volumeSlider}</div>}
-					{outputOpen && <div className="settings-preview-output">Speakers · Sample output</div>}
+					{outputOpen && (
+						<div className="settings-preview-output">
+							{t("ui.previewMediaPlayer.speakersSampleOutput")}
+						</div>
+					)}
 				</div>
 			) : (
 				<div className="compact-premium-layout">
@@ -174,8 +214,8 @@ export function PreviewMediaPlayer({
 						<button
 							type="button"
 							className="settings-preview-art-button"
-							aria-label="Show compact media layout"
-							title="Show compact layout"
+							aria-label={t("ui.previewMediaPlayer.showCompactMediaLayout")}
+							title={t("ui.previewMediaPlayer.showCompactLayout")}
 							onClick={() => onLayoutChange("compact")}
 						>
 							{art}
@@ -185,9 +225,9 @@ export function PreviewMediaPlayer({
 						<div className="track-header-row">
 							<div className="track-info-middle">
 								<div className="premium-title-wrap">
-									<span className="premium-title">{TRACKS[track].title}</span>
+									<span className="premium-title">{getTRACKS()[track].title}</span>
 								</div>
-								<span className="premium-artist">{TRACKS[track].artist}</span>
+								<span className="premium-artist">{getTRACKS()[track].artist}</span>
 							</div>
 							<div className={`settings-preview-visualizer${playing ? " playing" : ""}`}>
 								<i />
