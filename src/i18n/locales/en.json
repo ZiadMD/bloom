@@ -53,7 +53,7 @@
 			"time24h": "24-Hour Time",
 			"time24hDesc": "Use 24-hour clock format",
 			"lowBattery": "Low Battery Alert",
-			"lowBatteryDesc": "Trigger at {percent}%",
+			"lowBatteryDesc": "Trigger at {{percent}}%",
 			"reset": "Reset to Defaults",
 			"resetDesc": "Restore all settings and restart Bloom",
 			"restart": "Restart Bloom",
@@ -72,15 +72,15 @@
 			"customColor": "Custom Theme Color",
 			"customColorDesc": "Choose layout background color",
 			"opacity": "Background Opacity",
-			"opacityDesc": "Adjust theme transparency ({percent}%)",
+			"opacityDesc": "Adjust theme transparency ({{percent}}%)",
 			"saturation": "Color Saturation",
-			"saturationDesc": "Adjust theme color vibrancy ({percent}%)",
+			"saturationDesc": "Adjust theme color vibrancy ({{percent}}%)",
 			"brightness": "Background Brightness",
-			"brightnessDesc": "Adjust background lightness ({percent}%)",
+			"brightnessDesc": "Adjust background lightness ({{percent}}%)",
 			"corners": "Screen Corners",
 			"cornersDesc": "Rounded top edges",
 			"scale": "UI & Font Scale",
-			"scaleDesc": "Adjust desktop size ({percent}%)",
+			"scaleDesc": "Adjust desktop size ({{percent}}%)",
 			"decreaseScale": "Decrease Scale",
 			"increaseScale": "Increase Scale"
 		},
@@ -112,7 +112,7 @@
 			"behaviorDesc": "Choose how the notch appears",
 			"peekDelay": "Peek Delay",
 			"peekInstant": "Reveal instantly on top-edge contact",
-			"peekDelayed": "Rest on the top edge for {ms}ms to reveal",
+			"peekDelayed": "Rest on the top edge for {{ms}}ms to reveal",
 			"calendar": "Calendar & Timer",
 			"calendarDesc": "Enable productivity split-view",
 			"timerSound": "Timer Sound",
@@ -151,19 +151,19 @@
 			"brightnessEdgeDesc": "Slide in from right edge"
 		},
 		"about": {
-			"version": "Version {version}",
+			"version": "Version {{version}}",
 			"madeWith": "Made with",
 			"by": "by",
 			"authorTitle": "sehaz on GitHub",
 			"checking": "Checking...",
-			"available": "Update Available (v{version})",
+			"available": "Update Available (v{{version}})",
 			"upToDate": "Bloom is up to date",
 			"downloading": "Downloading Update...",
 			"installing": "Installing...",
 			"noUpdates": "No updates found",
 			"check": "Check for Updates",
 			"installDesc": "Click to install and restart",
-			"currentVersion": "Currently running v{version}",
+			"currentVersion": "Currently running v{{version}}",
 			"autoUpdate": "Auto Update",
 			"autoUpdateDesc": "Update automatically on startup",
 			"export": "Export Settings",
@@ -192,7 +192,7 @@
 			"resetIcon": "Reset Icon",
 			"addApp": "Add App to Dock...",
 			"bloomOptions": "Bloom Options",
-			"quitApp": "Quit {name}"
+			"quitApp": "Quit {{name}}"
 		},
 		"options": {
 			"openSettings": "Open Settings",
@@ -212,7 +212,7 @@
 			"closeWindow": "Close Window"
 		},
 		"preview": {
-			"imageAlt": "Preview {index}"
+			"imageAlt": "Preview {{index}}"
 		},
 		"toast": {
 			"setIconFailed": "Failed to set icon"
@@ -220,7 +220,7 @@
 	},
 	"notch": {
 		"status": {
-			"weatherTooltip": "{condition} — {city}",
+			"weatherTooltip": "{{condition}} — {{city}}",
 			"cpuUsage": "CPU Usage",
 			"ramUsage": "RAM Usage",
 			"freeDiskSpace": "Free Disk Space",
@@ -244,11 +244,11 @@
 			"setDuration": "Set duration",
 			"timesUp": "Time's up",
 			"clickToEdit": "Click to edit",
-			"endsAt": "ends {time}",
-			"pausedEndsAt": "Paused · ends {time}",
+			"endsAt": "ends {{time}}",
+			"pausedEndsAt": "Paused · ends {{time}}",
 			"clickToSetDuration": "Click to set a duration",
 			"timerDurationAria": "Set timer duration",
-			"presetMinutes": "{count}m"
+			"presetMinutes": "{{count}}m"
 		},
 		"commandCenter": {
 			"toggleHint": "Left-click to toggle, Right-click for Settings",
@@ -258,12 +258,12 @@
 			"connected": "Connected",
 			"notConnected": "Not connected",
 			"dockMode": "Dock Mode",
-			"cycleDockMode": "Cycle dock mode: {fixed} / {smart} / {peek}",
+			"cycleDockMode": "Cycle dock mode: {{fixed}} / {{smart}} / {{peek}}",
 			"bluetooth": "Bluetooth",
 			"notchMode": "Notch Mode",
-			"cycleNotchMode": "Cycle notch mode: {fixed} / {smart} / {peek}",
-			"focusDnd": "Focus / DND: {state}",
-			"energySaver": "Energy Saver: {state} — Click to open Settings",
+			"cycleNotchMode": "Cycle notch mode: {{fixed}} / {{smart}} / {{peek}}",
+			"focusDnd": "Focus / DND: {{state}}",
+			"energySaver": "Energy Saver: {{state}} — Click to open Settings",
 			"systemTray": "System Tray",
 			"notificationCenter": "Notification Center",
 			"bloomSettings": "Bloom Settings",
@@ -301,7 +301,7 @@
 		},
 		"update": {
 			"checking": "Checking for updates...",
-			"downloading": "Downloading update... {percent}%",
+			"downloading": "Downloading update... {{percent}}%",
 			"installing": "Installing update..."
 		}
 	},
@@ -315,7 +315,7 @@
 			"leftClickToToggleRightClickForNetworks": "Left-click to toggle, Right-click for networks",
 			"wiFiNetworks": "Wi-Fi networks",
 			"leftClickToToggleRightClickForDevices": "Left-click to toggle, Right-click for devices",
-			"value1Connected": "{value1} connected",
+			"value1Connected": "{{value1}} connected",
 			"bluetoothDevices": "Bluetooth devices",
 			"doNotDisturbOpenWindowsNotificationSettings": "Do Not Disturb — Open Windows notification settings",
 			"muteVolume": "Mute volume",
@@ -325,17 +325,17 @@
 			"typeToSetDuration": "Type to set duration",
 			"setTimerDurationAsMinutesAndSecondsForExample1230": "Set timer duration as minutes and seconds, for example 1230 for 12 minutes 30 seconds",
 			"dropFilesOrSelectedTextHere": "Drop files or selected text here",
-			"textValue1Chars": "Text · {value1} chars",
+			"textValue1Chars": "Text · {{value1}} chars",
 			"removeFromShelf": "Remove from shelf",
-			"openShelfValue1ItemValue2": "Open shelf: {value1} item{value2}",
-			"openMusicValue1": "Open music: {value1}",
+			"openShelfValue1ItemValue2": "Open shelf: {{value1}} item{{value2}}",
+			"openMusicValue1": "Open music: {{value1}}",
 			"inserted": "Inserted",
 			"removed": "Removed",
 			"unplugged": "Unplugged",
 			"disconnected": "Disconnected",
 			"case": "Case",
-			"shelfIsFullShelfMaxItemsRemoveAnItemFirst": "Shelf is full ({SHELF_MAX_ITEMS}) — remove an item first",
-			"shelfIsFullAddedRoomOfValue2Items": "Shelf is full — added {room} of {value2} items",
+			"shelfIsFullShelfMaxItemsRemoveAnItemFirst": "Shelf is full ({{SHELF_MAX_ITEMS}}) — remove an item first",
+			"shelfIsFullAddedRoomOfValue2Items": "Shelf is full — added {{room}} of {{value2}} items",
 			"copiedToClipboard": "Copied to clipboard",
 			"fileNoLongerExistsRemovedFromShelf": "File no longer exists — removed from shelf",
 			"couldnTOpenTheFile": "Couldn't open the file"
@@ -370,7 +370,7 @@
 			"putTheDeviceInPairingModeFirst": "Put the device in pairing mode first",
 			"disconnecting": "Disconnecting…",
 			"connecting": "Connecting…",
-			"connectedValue1": "Connected · {value1}%"
+			"connectedValue1": "Connected · {{value1}}%"
 		},
 		"calendar": {
 			"calendarPageUpAndPageDownChangeMonthHoldShift": "Calendar. Page Up and Page Down change month; hold Shift to change year. Home returns to today.",
@@ -387,11 +387,11 @@
 			"noBatteryInfo": "No battery info",
 			"connectedDevices": "Connected devices",
 			"noDevicesConnected": "No devices connected",
-			"minutesMin": "{minutes} min",
-			"hoursHRestMin": "{hours} h {rest} min",
-			"hoursH": "{hours} h",
-			"chargingValue1ToFull": "Charging · {value1} to full",
-			"value1Left": "{value1} left",
+			"minutesMin": "{{minutes}} min",
+			"hoursHRestMin": "{{hours}} h {{rest}} min",
+			"hoursH": "{{hours}} h",
+			"chargingValue1ToFull": "Charging · {{value1}} to full",
+			"value1Left": "{{value1}} left",
 			"onBattery": "On battery",
 			"headphoneJack": "Headphone jack",
 			"usb": "USB",
@@ -431,7 +431,7 @@
 			"startWithWindows": "Start with Windows",
 			"automaticUpdates": "Automatic updates",
 			"gettingThingsReady": "Getting things ready…",
-			"stepValue1OfValue2": "Step {value1} of {value2}",
+			"stepValue1OfValue2": "Step {{value1}} of {{value2}}",
 			"previousStep": "Previous step",
 			"skip": "Skip",
 			"saving": "Saving…",
@@ -448,10 +448,10 @@
 			"openSettingsFromCommandCenter": "Open Settings from Command Center.",
 			"orRightClickTheDockForBloomOptions": "Or right-click the Dock for Bloom Options.",
 			"quitBloomToRestoreTheWindowsTaskbar": "Quit Bloom to restore the Windows taskbar.",
-			"couldnTLoadSetupValue1": "Couldn't load setup: {value1}",
-			"couldnTFinishSetupPleaseTryAgainValue1": "Couldn't finish setup. Please try again. {value1}",
-			"couldnTChangeAppearancePleaseTryAgainValue1": "Couldn't change appearance. Please try again. {value1}",
-			"couldnTFinishSavingPleaseTryAgainValue1": "Couldn't finish saving. Please try again. {value1}"
+			"couldnTLoadSetupValue1": "Couldn't load setup: {{value1}}",
+			"couldnTFinishSetupPleaseTryAgainValue1": "Couldn't finish setup. Please try again. {{value1}}",
+			"couldnTChangeAppearancePleaseTryAgainValue1": "Couldn't change appearance. Please try again. {{value1}}",
+			"couldnTFinishSavingPleaseTryAgainValue1": "Couldn't finish saving. Please try again. {{value1}}"
 		},
 		"wifiPanel": {
 			"thisNetworkNeedsASignInWindowsHandles": "This network needs a sign-in Windows handles.",
@@ -496,17 +496,15 @@
 		},
 		"dock": {
 			"runningInBackground": "Running in background",
-			"countOpenWindows": {
-				"one": "{count} open window",
-				"other": "{count} open windows"
-			},
+			"countOpenWindows_one": "{{count}} open window",
+			"countOpenWindows_other": "{{count}} open windows",
 			"taskView": "Task View",
 			"open": "Open",
 			"eject": "Eject",
 			"removeFromDock": "Remove from Dock",
 			"openTaskView": "Open Task View",
 			"hideTaskView": "Hide Task View",
-			"trayMenuValue1": "Tray menu {value1}",
+			"trayMenuValue1": "Tray menu {{value1}}",
 			"appTrayMenu": "App tray menu",
 			"close": "Close",
 			"allWindows": "all windows",
@@ -539,7 +537,7 @@
 		},
 		"dockTab": {
 			"revealInstantlyOnBottomEdgeContact": "Reveal instantly on bottom-edge contact",
-			"restOnTheBottomEdgeForDockedgedelayMsToReveal": "Rest on the bottom edge for {dockEdgeDelay}ms to reveal",
+			"restOnTheBottomEdgeForDockedgedelayMsToReveal": "Rest on the bottom edge for {{dockEdgeDelay}}ms to reveal",
 			"showBackgroundApps": "Show Background Apps",
 			"keepAppsInTheDockWhenTheyCloseToThe": "Keep apps in the dock when they close to the system tray",
 			"appSeparator": "App Separator",
@@ -595,7 +593,7 @@
 			"replayPreview": "Replay preview",
 			"hidePreview": "Hide preview",
 			"showPreview": "Show preview",
-			"tabPreviews": "{tab} previews"
+			"tabPreviews": "{{tab}} previews"
 		},
 		"generalTab": {
 			"welcomeToBloom": "Welcome to Bloom",
@@ -603,7 +601,7 @@
 			"openSetup": "Open setup"
 		},
 		"notchTab": {
-			"restOnTheTopEdgeForNotchedgedelayMsToReveal": "Rest on the top edge for {notchEdgeDelay}ms to reveal",
+			"restOnTheTopEdgeForNotchedgedelayMsToReveal": "Rest on the top edge for {{notchEdgeDelay}}ms to reveal",
 			"panels": "Panels",
 			"mondayFirstCalendar": "Monday-first Calendar",
 			"startEachWeekOnMondayInsteadOfSunday": "Start each week on Monday instead of Sunday",
@@ -625,7 +623,7 @@
 		},
 		"previewDock": {
 			"dockIsOff": "Dock is off",
-			"previewName": "Preview {name}"
+			"previewName": "Preview {{name}}"
 		},
 		"previewMediaPlayer": {
 			"sampleTrack": "Sample track",
@@ -663,32 +661,32 @@
 			"dismissSaveError": "Dismiss save error"
 		},
 		"batteryTooltip": {
-			"restMin": "{rest} min",
-			"hoursHr": "{hours} hr",
-			"hoursHrRestMin": "{hours} hr {rest} min",
-			"fullyChargedPercent": "Fully charged ({percent}%)",
-			"value1PercentRemaining": "{value1} ({percent}%) remaining",
-			"percentRemaining": "{percent}% remaining",
-			"aboutValue1UntilFull": "About {value1} until full",
-			"powerModeValue1": "Power mode: {value1}",
+			"restMin": "{{rest}} min",
+			"hoursHr": "{{hours}} hr",
+			"hoursHrRestMin": "{{hours}} hr {{rest}} min",
+			"fullyChargedPercent": "Fully charged ({{percent}}%)",
+			"value1PercentRemaining": "{{value1}} ({{percent}}%) remaining",
+			"percentRemaining": "{{percent}}% remaining",
+			"aboutValue1UntilFull": "About {{value1}} until full",
+			"powerModeValue1": "Power mode: {{value1}}",
 			"energySaverIsOn": "Energy saver is on",
-			"batteryHealthValue1OfOriginalCapacity": "Battery health: {value1}% of original capacity"
+			"batteryHealthValue1OfOriginalCapacity": "Battery health: {{value1}}% of original capacity"
 		}
 	},
 	"preview": {
 		"on": "on",
 		"off": "off",
 		"remembered": "remembered",
-		"clock": "{format} · Launch at login {autostart} · Update available: dot {indicator}",
-		"battery": "Sample battery: 15% · Alert threshold: {threshold}%",
-		"theme": "{theme} theme · {opacity}% opacity · {scale}% scale · Screen corners {corners}",
-		"resting": "{mode} mode · {visibility} · Weather {weather} · Panel {panel}",
-		"edgeDelay": "Edge delay {delay}ms",
-		"music": "Music mode {enabled} · Compact {compact} · Saved layout: {layout} · Glow {glow}",
-		"dock": "{mode} · Icon only {icons} · Extras {position} · Previews {previews}",
-		"dockMode": "{mode} mode",
-		"volume": "Volume HUD {enabled} · Edge hover {edge}",
-		"brightness": "Brightness HUD {enabled} · Edge hover {edge}",
+		"clock": "{{format}} · Launch at login {{autostart}} · Update available: dot {{indicator}}",
+		"battery": "Sample battery: 15% · Alert threshold: {{threshold}}%",
+		"theme": "{{theme}} theme · {{opacity}}% opacity · {{scale}}% scale · Screen corners {{corners}}",
+		"resting": "{{mode}} mode · {{visibility}} · Weather {{weather}} · Panel {{panel}}",
+		"edgeDelay": "Edge delay {{delay}}ms",
+		"music": "Music mode {{enabled}} · Compact {{compact}} · Saved layout: {{layout}} · Glow {{glow}}",
+		"dock": "{{mode}} · Icon only {{icons}} · Extras {{position}} · Previews {{previews}}",
+		"dockMode": "{{mode}} mode",
+		"volume": "Volume HUD {{enabled}} · Edge hover {{edge}}",
+		"brightness": "Brightness HUD {{enabled}} · Edge hover {{edge}}",
 		"volumeOff": "Volume HUD is off",
 		"brightnessOff": "Brightness HUD is off",
 		"sampleVolume": "Sample volume",
@@ -706,8 +704,8 @@
 		}
 	},
 	"battery": {
-		"pluggedCharging": "{percent}% available (plugged in, charging)",
-		"pluggedNotCharging": "{percent}% available (plugged in, not charging)",
-		"chargingPercent": "{level}%, charging"
+		"pluggedCharging": "{{percent}}% available (plugged in, charging)",
+		"pluggedNotCharging": "{{percent}}% available (plugged in, not charging)",
+		"chargingPercent": "{{level}}%, charging"
 	}
 }

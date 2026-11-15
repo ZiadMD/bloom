@@ -63,8 +63,8 @@ for (const file of walk(join(root, "src")).filter((file) => /\.(ts|tsx)$/.test(f
 				calls++;
 				const plural =
 					node.expression.text === "tCount" &&
-					reference.has(literal + ".one") &&
-					reference.has(literal + ".other");
+					reference.has(literal + "_one") &&
+					reference.has(literal + "_other");
 				if (!reference.has(literal) && !plural) {
 					const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
 					errors.push(`${relative(root, file)}:${line}: missing English key ${literal}`);

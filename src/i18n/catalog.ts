@@ -6,7 +6,19 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 export function placeholders(value: string): string[] {
-	return [...new Set([...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]))].sort();
+	return [...new Set([...value.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((match) => match[1]))].sort();
+}
+
+function sourceEntry(
+	source: Catalog,
+	key: string,
+	allowed = categories
+): string | Catalog | undefined {
+	if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+	const plural = /^(.*)_(zero|one|two|few|many|other)$/.exec(key);
+	if (!plural || !allowed.has(plural[2])) return undefined;
+	const other = source[`${plural[1]}_other`];
+	return typeof other === "string" ? other : undefined;
 }
 
 export function validMessage(value: unknown, source: string): value is string {
@@ -23,34 +35,13 @@ export function sanitizeCatalog(source: Catalog, target: unknown): Catalog {
 	if (!isObject(target)) return result;
 	for (const [key, value] of Object.entries(target)) {
 		if (["__proto__", "prototype", "constructor"].includes(key)) continue;
-		const reference = Object.prototype.hasOwnProperty.call(source, key)
-			? source[key]
-			: categories.has(key) && typeof source.other === "string"
-				? source.other
-				: undefined;
+		const reference = sourceEntry(source, key);
 		if (typeof reference === "string") {
 			if (validMessage(value, reference)) result[key] = value;
 		} else if (isObject(reference)) {
 			const child = sanitizeCatalog(reference as Catalog, value);
 			if (Object.keys(child).length > 0) result[key] = child;
 		}
-	}
-	return result;
-}
-
-/** Contributor files use nested plural groups; i18next uses suffixes. */
-export function engineCatalog(catalog: Catalog): Catalog {
-	const result: Catalog = {};
-	for (const [key, value] of Object.entries(catalog)) {
-		if (typeof value === "string") result[key] = value;
-		else if (
-			Object.keys(value).length > 0 &&
-			Object.keys(value).every((k) => categories.has(k)) &&
-			Object.values(value).every((v) => typeof v === "string")
-		) {
-			for (const [category, message] of Object.entries(value))
-				result[`${key}_${category}`] = message;
-		} else result[key] = engineCatalog(value);
 	}
 	return result;
 }
@@ -82,11 +73,7 @@ export function validateCatalog(source: Catalog, target: unknown, locale: string
 		}
 		for (const [key, translated] of Object.entries(value)) {
 			const path = prefix ? `${prefix}.${key}` : key;
-			const expected = Object.prototype.hasOwnProperty.call(reference, key)
-				? reference[key]
-				: allowedCategories.has(key) && typeof reference.other === "string"
-					? reference.other
-					: undefined;
+			const expected = sourceEntry(reference, key, allowedCategories);
 			if (["__proto__", "prototype", "constructor"].includes(key) || expected === undefined) {
 				issues.push(`${path}: unknown key`);
 			} else if (typeof expected === "string") {

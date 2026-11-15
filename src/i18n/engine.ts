@@ -1,5 +1,5 @@
 import { createInstance } from "i18next";
-import { engineCatalog, sanitizeCatalog, type Catalog } from "./catalog";
+import { sanitizeCatalog, type Catalog } from "./catalog";
 
 type Params = Record<string, string | number>;
 
@@ -9,10 +9,10 @@ export function createTranslator(english: Catalog, catalogs: Record<string, unkn
 	const resources = Object.fromEntries(
 		Object.entries(catalogs).map(([locale, catalog]) => [
 			locale,
-			{ translation: engineCatalog(sanitizeCatalog(english, catalog)) }
+			{ translation: sanitizeCatalog(english, catalog) }
 		])
 	);
-	resources.en = { translation: engineCatalog(english) };
+	resources.en = { translation: english };
 	void instance.init({
 		lng: "en",
 		fallbackLng: "en",
@@ -20,7 +20,8 @@ export function createTranslator(english: Catalog, catalogs: Record<string, unkn
 		initAsync: false,
 		returnEmptyString: false,
 		returnNull: false,
-		interpolation: { prefix: "{", suffix: "}", escapeValue: false }
+		// React escapes rendered text; keep i18next's default {{name}} syntax.
+		interpolation: { escapeValue: false }
 	});
 	const t = (key: string, params?: Params): string => String(instance.t(key, params ?? {}));
 	return {

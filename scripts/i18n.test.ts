@@ -2,14 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { createTranslator } from "../src/i18n/engine";
 import { resolveLanguage, normalizeLanguageSetting } from "../src/i18n/runtime";
 import { sanitizeCatalog, validateCatalog, type Catalog } from "../src/i18n/catalog";
+import { createInstance } from "i18next";
+import en from "../src/i18n/locales/en.json";
+import ru from "../src/i18n/locales/ru.json";
 
 const english: Catalog = {
-	settings: { title: "Settings", greeting: "Hello {name}" },
-	items: { one: "{count} item", other: "{count} items" }
+	settings: { title: "Settings", greeting: "Hello {{name}}" },
+	items_one: "{{count}} item",
+	items_other: "{{count}} items"
 };
 
 describe("partial translation safety", () => {
-	for (const value of [undefined, null, "", "   ", 42, [], {}, "Hello {wrong}"]) {
+	for (const value of [undefined, null, "", "   ", 42, [], {}, "Hello {{wrong}}"]) {
 		test(`invalid message ${JSON.stringify(value)} uses English`, () => {
 			const tr = createTranslator(english, { fr: { settings: { greeting: value } } });
 			tr.setLocale("fr");
@@ -49,8 +53,8 @@ describe("partial translation safety", () => {
 
 describe("plurals", () => {
 	test("empty or wholly invalid plural groups cannot mask English with an object", () => {
-		for (const items of [{}, null, "invalid", { one: "" }, { one: "{wrong}" }, { other: 12 }]) {
-			const tr = createTranslator(english, { ru: { items } });
+		for (const value of [{}, null, [], "", " ", "{{wrong}}", 12]) {
+			const tr = createTranslator(english, { ru: { items_one: value, items_other: value } });
 			tr.setLocale("ru");
 			expect(tr.tCount("items", 1)).toBe("1 item");
 			expect(tr.tCount("items", 21)).toBe("21 items");
@@ -67,12 +71,10 @@ describe("plurals", () => {
 	test("additional Russian plural categories are retained", () => {
 		const tr = createTranslator(english, {
 			ru: {
-				items: {
-					one: "{count} предмет",
-					few: "{count} предмета",
-					many: "{count} предметов",
-					other: "{count} предмета"
-				}
+				items_one: "{{count}} предмет",
+				items_few: "{{count}} предмета",
+				items_many: "{{count}} предметов",
+				items_other: "{{count}} предмета"
 			}
 		});
 		tr.setLocale("ru");
@@ -83,18 +85,34 @@ describe("plurals", () => {
 	});
 
 	test("a partially translated plural group falls back per form", () => {
-		const tr = createTranslator(english, { ru: { items: { few: "{count} предмета" } } });
+		const tr = createTranslator(english, { ru: { items_few: "{{count}} предмета" } });
 		tr.setLocale("ru");
 		expect(tr.tCount("items", 2)).toBe("2 предмета");
 		expect(tr.tCount("items", 21)).toBe("21 items");
 	});
 
 	test("French zero uses French singular, missing French uses English plural", () => {
-		const tr = createTranslator(english, { fr: { items: { one: "{count} élément" } } });
+		const tr = createTranslator(english, { fr: { items_one: "{{count}} élément" } });
 		tr.setLocale("fr");
 		expect(tr.tCount("items", 0)).toBe("0 élément");
 		expect(tr.tCount("items", 2)).toBe("2 items");
 	});
+});
+
+test("shipping catalogs work in plain i18next without a format adapter", () => {
+	const instance = createInstance();
+	void instance.init({
+		lng: "en",
+		fallbackLng: "en",
+		initAsync: false,
+		resources: { en: { translation: en }, ru: { translation: ru } }
+	});
+	expect(instance.t("settings.about.version", { version: "3.10.2" })).toBe("Version 3.10.2");
+	expect(instance.t("ui.dock.countOpenWindows", { count: 1 })).toBe("1 open window");
+	expect(instance.t("ui.dock.countOpenWindows", { count: 2 })).toBe("2 open windows");
+	void instance.changeLanguage("ru");
+	expect(instance.t("settings.about.version", { version: "3.10.2" })).toBe("Версия 3.10.2");
+	expect(instance.t("ui.dock.countOpenWindows", { count: 21 })).toBe("21 open windows");
 });
 
 describe("language settings", () => {
@@ -131,7 +149,7 @@ describe("catalog validation", () => {
 			{ unknown: {} },
 			{ settings: "wrong" },
 			{ settings: { title: " " } },
-			{ settings: { greeting: "Bonjour {wrong}" } }
+			{ settings: { greeting: "Bonjour {{wrong}}" } }
 		]) {
 			expect(validateCatalog(english, target, "fr").length).toBeGreaterThan(0);
 		}
@@ -140,15 +158,15 @@ describe("catalog validation", () => {
 		expect(
 			validateCatalog(
 				english,
-				{ items: { few: "{count} предмета", many: "{count} предметов" } },
+				{ items_few: "{{count}} предмета", items_many: "{{count}} предметов" },
 				"ru"
 			)
 		).toEqual([]);
-		expect(validateCatalog(english, { items: { fwe: "{count} предмета" } }, "ru").length).toBe(1);
+		expect(validateCatalog(english, { items_fwe: "{{count}} предмета" }, "ru").length).toBe(1);
 	});
 	test("repeated placeholders have set semantics", () => {
 		expect(
-			validateCatalog(english, { settings: { greeting: "{name}, bonjour {name}" } }, "fr")
+			validateCatalog(english, { settings: { greeting: "{{name}}, bonjour {{name}}" } }, "fr")
 		).toEqual([]);
 	});
 });
