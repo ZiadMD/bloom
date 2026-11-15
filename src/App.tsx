@@ -23,7 +23,7 @@ import {
 import { CompactMediaPlayer } from "./CompactMediaPlayer";
 import { useWeather } from "./hooks/useWeather";
 import { useSettingsSync } from "./hooks/useSettingsSync";
-import { t, resolveLanguage, setLocale, useTranslation, getLocale } from "./i18n";
+import { t, tCount, resolveLanguage, setLocale, useTranslation, getLocale } from "./i18n";
 import { useTrailingThrottle } from "./hooks/useTrailingThrottle";
 import { useAnnouncement } from "./hooks/useAnnouncement";
 import { useAgentAlerts } from "./hooks/useAgentAlerts";
@@ -4669,7 +4669,7 @@ function App() {
 							style={{ right: "50%", marginRight: getDynamicWidth() / 2 + (showShelfBubble ? 62 : 8) }}
 							initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
 							onAnimationComplete={() => reportNotchRect.current()}
-							aria-label={`${agentAlerts.attention.length} agent session${agentAlerts.attention.length === 1 ? " needs" : "s need"} your attention. Show alert.`}
+							aria-label={tCount("agentActivity.attentionBadge", agentAlerts.attention.length)}
 							onClick={(event) => { event.stopPropagation(); agentAlerts.replay(); }}>
 							<AgentLogo agent={agentAlerts.attention[0].agent} /><span>{agentAlerts.attention.length}</span>
 						</motion.button>
