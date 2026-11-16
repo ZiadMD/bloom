@@ -53,6 +53,7 @@ export function useSettings() {
 		return !saveFailed.current;
 	}, []);
 	const [autostart, setAutostart] = useState(false);
+	const [agentAlertsEnabled, setAgentAlertsEnabled] = useState(() => localStorage.getItem("bloom-agent-alerts-enabled") !== "false");
 	useEffect(() => {
 		const unlisten = listen<boolean>("autostart-changed", ({ payload }) => setAutostart(payload));
 		return () => {
@@ -234,6 +235,7 @@ export function useSettings() {
 			};
 
 			apply(getVal("bloom-weather-enabled"), setWeatherEnabled, readBool);
+			apply(getVal("bloom-agent-alerts-enabled"), setAgentAlertsEnabled, readBool);
 			apply(getVal("bloom-calendar-enabled"), setCalendarEnabled, readBool);
 			apply(getVal("bloom-calendar-monday-first"), setCalendarMondayFirst, readBool);
 			apply(getVal("bloom-notch-command-center-enabled"), setControlsPanelEnabled, readBool);
@@ -407,6 +409,7 @@ export function useSettings() {
 
 	// ── Sync settings from other windows ──
 	useSettingsSync({
+		"bloom-agent-alerts-enabled": setAgentAlertsEnabled,
 		"bloom-dock-mode": setDockMode,
 		"bloom-dock-edge-delay": setDockEdgeDelay,
 		"bloom-notch-mode": setNotchMode,
@@ -1032,6 +1035,8 @@ export function useSettings() {
 	};
 
 	return {
+		agentAlertsEnabled,
+		toggleAgentAlerts: () => { void saveSetting("bloom-agent-alerts-enabled", String(!agentAlertsEnabled)); },
 		isLoaded,
 		flushPendingSaves,
 		saveError,

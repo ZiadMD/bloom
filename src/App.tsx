@@ -23,9 +23,11 @@ import {
 import { CompactMediaPlayer } from "./CompactMediaPlayer";
 import { useWeather } from "./hooks/useWeather";
 import { useSettingsSync } from "./hooks/useSettingsSync";
-import { t, resolveLanguage, setLocale, useTranslation, getLocale } from "./i18n";
+import { t, tCount, resolveLanguage, setLocale, useTranslation, getLocale } from "./i18n";
 import { useTrailingThrottle } from "./hooks/useTrailingThrottle";
 import { useAnnouncement } from "./hooks/useAnnouncement";
+import { useAgentAlerts } from "./hooks/useAgentAlerts";
+import { AgentAlert, AgentLogo } from "./components/AgentAlert";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -837,6 +839,19 @@ function App() {
 	const [isImpacted, setIsImpacted] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [startupAnimating, setStartupAnimating] = useState(false);
+	const [bloomMode, setBloomMode] = useState<BloomMode>("status");
+	const agentAlerts = useAgentAlerts(
+		windowLabel === "main",
+		!isReady || !isVisible || startupAnimating || isOpen || announcementOpen || deviceAlertOnScreen || bloomMode === "shelf"
+	);
+	const agentAlert = agentAlerts.active;
+	const [agentActivityFitWidth, setAgentActivityFitWidth] = useState(264);
+	const [agentAlertOnScreen, setAgentAlertOnScreen] = useState(false);
+	const agentAlertRef = useRef(agentAlert);
+	agentAlertRef.current = agentAlert;
+	useLayoutEffect(() => {
+		if (agentAlert) setAgentAlertOnScreen(true);
+	}, [agentAlert]);
 
 	const [dockMode, setDockMode] = useState(() => {
 		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
@@ -858,6 +873,7 @@ function App() {
 	const timeCenterRef = useRef<HTMLDivElement>(null);
 	const musicBubbleRef = useRef<HTMLButtonElement>(null);
 	const shelfBubbleRef = useRef<HTMLButtonElement>(null);
+	const agentBubbleRef = useRef<HTMLButtonElement>(null);
 	const reportNotchRect = useRef<() => void>(() => {});
 	// The pill's target box in window CSS px, and the sender that applies the
 	// notch window's region (holding earlier regions while it shrinks).
@@ -901,6 +917,8 @@ function App() {
 	const isHidden =
 		!onboardingReveal &&
 		!startupAnimating &&
+		!agentAlert &&
+		!agentAlertOnScreen &&
 		!deviceAlertOnScreen &&
 		((notchMode === "smart" && isOverlapped && interactionState === "none") ||
 			(notchMode === "peek" && interactionState === "none" && !eventPeek));
@@ -934,7 +952,7 @@ function App() {
 		const updateRect = () => {
 			if (bloomRef.current && windowLabel === "main") {
 				// Activity bubbles sit beside the pill and must stay clickable too.
-				const rects = [bloomRef.current, musicBubbleRef.current, shelfBubbleRef.current]
+				const rects = [bloomRef.current, musicBubbleRef.current, shelfBubbleRef.current, agentBubbleRef.current]
 					.filter((el): el is NonNullable<typeof el> => el !== null)
 					.map((el) => el.getBoundingClientRect());
 				const left = Math.min(...rects.map((r) => r.left));
@@ -1414,9 +1432,6 @@ function App() {
 			unlistenSplash?.();
 		};
 	}, [windowLabel, systemSettingsReady, waitForStartupSplash, dockEnabled, dockMode, notchMode]);
-
-	// Bloom mode state: 'music', 'calendar', 'command-center', 'announcement', 'shelf', or 'status'
-	const [bloomMode, setBloomMode] = useState<BloomMode>("status");
 
 	// Shelf: files and selected text stashed in the notch via drag-and-drop.
 	// Files are stored as plain paths (references, never copies). Session-scoped
@@ -2176,8 +2191,9 @@ function App() {
 		settingsMusicCompactNotch &&
 		mediaInfo.has_media &&
 		musicActivityVisible;
-	const collapsedMode = musicActivity && !timerActive ? "music" : "status";
-	const showMusicBubble = musicActivity && timerActive && !isOpen && isVisible && !isHidden;
+	const collapsedMode = musicActivity && !timerActive && !agentAlert ? "music" : "status";
+	const showMusicBubble =
+		musicActivity && (timerActive || !!agentAlert) && !isOpen && isVisible && !isHidden;
 	const showShelfBubble =
 		shelfItems.length > 0 && !isOpen && isVisible && !isHidden && bloomMode !== "announcement";
 	restingModeRef.current = collapsedMode;
@@ -2194,6 +2210,9 @@ function App() {
 	// Expands the notch into a panel, or into an activity's own view.
 	const openNotch = (view: NotchPanel | "music" | "shelf") => {
 		if (bloomMode === "announcement") return;
+		// Clicking a live activity skips hover expansion, so enter the same
+		// interaction state as opening the ordinary notch.
+		setIsHovered(true);
 		setIsOpen(true);
 		setBloomMode(view);
 	};
@@ -3125,6 +3144,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
+		if (agentAlert || (agentAlertOnScreen && !isOpen && !deviceAlertOnScreen)) return agentActivityFitWidth + 24;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (bloomMode === "device" && deviceAlert) return 330;
 		if (isCalendarMode) return 480;
@@ -3155,6 +3175,7 @@ function App() {
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
+		if (agentAlert || (agentAlertOnScreen && !isOpen && !deviceAlertOnScreen)) return 36;
 		// Announcement card: body is line-clamped, so a fixed size fits both cases.
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) {
 			return announcement.url ? 168 : 148;
@@ -3264,7 +3285,7 @@ function App() {
 				<DeviceArtDefs />
 				<motion.div
 					ref={bloomRef}
-					className={`bloom ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
+					className={`bloom ${isHovered && !agentAlert ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
 					onMouseEnter={() => setIsNotchHovered(true)}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
@@ -3300,7 +3321,7 @@ function App() {
 					}}
 					onHoverStart={() => {
 						releaseDeferredRef.current = false;
-						setIsHovered(true);
+						if (!agentAlert) setIsHovered(true);
 						// Hovering the shelf cancels its post-drop auto-close.
 						if (bloomMode === "shelf") clearShelfCollapse();
 					}}
@@ -3640,15 +3661,17 @@ function App() {
 										>
 											<div
 												className="main-row"
-												// A device alert covers the whole pill.
+												// Compact activities yield the entire normal row as soon as a panel opens.
 												style={
-													bloomMode === "device" || deviceAlertOnScreen
+													(!isOpen && (agentAlert || agentAlertOnScreen)) ||
+													bloomMode === "device" ||
+													deviceAlertOnScreen
 														? { visibility: "hidden" }
 														: undefined
 												}
 											>
 												<AnimatePresence mode="wait">
-													{(showPowerPulse || showLowBatteryPulse || showUpdatePulse) &&
+													{!agentAlert && !agentAlertOnScreen && (showPowerPulse || showLowBatteryPulse || showUpdatePulse) &&
 													!isHovered ? (
 														showUpdatePulse ? (
 															<motion.div
@@ -4279,6 +4302,16 @@ function App() {
 									)}
 								</AnimatePresence>
 
+								<AnimatePresence onExitComplete={() => setAgentAlertOnScreen(agentAlertRef.current !== null)}>
+									{agentAlert && (
+										<AgentAlert
+											key={`${agentAlert.agent}:${agentAlert.session}`}
+											alert={agentAlert}
+											onWidthChange={setAgentActivityFitWidth}
+										/>
+									)}
+								</AnimatePresence>
+
 								{/* Device alert: a device connected or disconnected. A
 								    click opens the Bluetooth view. */}
 								<AnimatePresence
@@ -4630,6 +4663,18 @@ function App() {
 						)}
 					</AnimatePresence>
 				</motion.div>
+				<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
+					{agentAlerts.attention.length > 0 && agentAlert?.kind !== "attention" && !isOpen && isVisible && !isHidden && (
+						<motion.button ref={agentBubbleRef} type="button" className="activity-bubble agent-bubble"
+							style={{ right: "50%", marginRight: getDynamicWidth() / 2 + (showShelfBubble ? 62 : 8) }}
+							initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+							onAnimationComplete={() => reportNotchRect.current()}
+							aria-label={tCount("agentActivity.attentionBadge", agentAlerts.attention.length)}
+							onClick={(event) => { event.stopPropagation(); agentAlerts.replay(); }}>
+							<AgentLogo agent={agentAlerts.attention[0].agent} /><span>{agentAlerts.attention.length}</span>
+						</motion.button>
+					)}
+				</AnimatePresence>
 				{/* The shelf's items, as a bubble on the left of the collapsed pill */}
 				<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
 					{showShelfBubble && (
@@ -4665,7 +4710,7 @@ function App() {
 						</motion.button>
 					)}
 				</AnimatePresence>
-				{/* Music in its own bubble while a timer holds the collapsed pill */}
+				{/* Music moves beside the pill while a timer or agent holds it. */}
 				<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
 					{showMusicBubble && (
 						<motion.button
