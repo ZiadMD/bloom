@@ -1,6 +1,7 @@
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { listenHere } from "./surfaceEvents";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
@@ -1272,22 +1273,22 @@ function App() {
 		const preventContext = (e: MouseEvent) => e.preventDefault();
 		document.addEventListener("contextmenu", preventContext);
 
-		const unlistenVisibility = listen<boolean>("visibility-change", (event) => {
+		const unlistenVisibility = listenHere<boolean>("visibility-change", (event) => {
 			setIsVisible(event.payload);
 		});
 
-		const unlistenNotchOverlap = listen<boolean>("notch-overlap", (event) => {
+		const unlistenNotchOverlap = listenHere<boolean>("notch-overlap", (event) => {
 			setIsOverlapped(event.payload);
 		});
 
-		const unlistenNotchEdgeHover = listen<boolean>("notch-edge-hover", (event) => {
+		const unlistenNotchEdgeHover = listenHere<boolean>("notch-edge-hover", (event) => {
 			setIsEdgeHovered(event.payload);
 		});
 
 		// The backend emits this when the window flips to click-through while
 		// the webview still thinks the pointer is inside the notch (it cannot
 		// receive the mouseleave once the window is click-through).
-		const unlistenNotchPointerLeft = listen("notch-pointer-left", () => {
+		const unlistenNotchPointerLeft = listenHere("notch-pointer-left", () => {
 			releaseNotchHover();
 		});
 

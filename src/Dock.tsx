@@ -3,6 +3,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from "rea
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { listenHere } from "./surfaceEvents";
 import "./Dock.css";
 import { EdgeSurface } from "./components/EdgeSurface";
 import { initTheme } from "./theme";
@@ -479,19 +480,19 @@ const Dock = memo(function Dock() {
 			} catch (_) {}
 		});
 
-		const unlistenOverlap = listen<boolean>("dock-overlap", (event) => {
+		const unlistenOverlap = listenHere<boolean>("dock-overlap", (event) => {
 			setIsOverlapped(event.payload);
 		});
 
-		const unlistenEdgeHover = listen<boolean>("dock-edge-hover", (event) => {
+		const unlistenEdgeHover = listenHere<boolean>("dock-edge-hover", (event) => {
 			setIsEdgeHovered(event.payload);
 		});
 
-		const unlistenVisibility = listen<boolean>("visibility-change", (event) => {
+		const unlistenVisibility = listenHere<boolean>("visibility-change", (event) => {
 			setIsVisible(event.payload);
 		});
 
-		const unlistenMaximized = listen<boolean>("dock-maximized", (event) => {
+		const unlistenMaximized = listenHere<boolean>("dock-maximized", (event) => {
 			setIsMaximized(event.payload);
 		});
 
@@ -921,7 +922,7 @@ const Dock = memo(function Dock() {
 	// click itself goes to whatever is under it (the window region keeps the
 	// dock out of the way), so the backend's mouse hook reports it instead.
 	useEffect(() => {
-		const unlisten = listen("dock-dismiss-menu", () => {
+		const unlisten = listenHere("dock-dismiss-menu", () => {
 			setContextMenu(null);
 			setActiveSubmenu(null);
 			setShowAddPopup(false);
@@ -1158,7 +1159,7 @@ const Dock = memo(function Dock() {
 	}, [dockPopupRequested, dockHoverTarget, keepShellInteraction]);
 	useEffect(() => {
 		let disposed = false;
-		const unlisten = listen<boolean>("dock-shell-interaction", ({ payload }) => {
+		const unlisten = listenHere<boolean>("dock-shell-interaction", ({ payload }) => {
 			if (!disposed) setShellInteraction(payload);
 		});
 		return () => {
@@ -1182,7 +1183,7 @@ const Dock = memo(function Dock() {
 	useEffect(() => {
 		// The backend claims Win+1-9 while the native taskbar is hidden and reports
 		// which pinned slot was pressed; behaviour matches a click on that icon.
-		const unlisten = listen<number>("dock-win-number", (event) => {
+		const unlisten = listenHere<number>("dock-win-number", (event) => {
 			const app = pinnedItemsRef.current[event.payload];
 			if (app) handleAppClickRef.current(app);
 		});
