@@ -23,6 +23,7 @@ import {
 	X
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { MonitorPicker } from "./MonitorPicker";
 import {
 	KNOWN_FOLDER_OPTIONS,
 	driveLetter,
@@ -225,6 +226,8 @@ export function DockTab({
 								<option value="peek">{t("common.behavior.peek")}</option>
 							</select>
 						</SettingRow>
+
+						<MonitorPicker surface="dock" />
 
 						{dockMode !== "fixed" && (
 							<SettingRow

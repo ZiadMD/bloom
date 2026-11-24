@@ -16,6 +16,7 @@ import {
 	X
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { MonitorPicker } from "./MonitorPicker";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
 import type { NotchPanelChoice } from "./useSettings";
@@ -157,6 +158,8 @@ export function NotchTab({
 						<option value="peek">{t("common.behavior.peek")}</option>
 					</select>
 				</SettingRow>
+
+				<MonitorPicker surface="notch" />
 
 				{notchMode !== "fixed" && (
 					<SettingRow

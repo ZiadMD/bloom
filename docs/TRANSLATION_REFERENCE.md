@@ -236,6 +236,18 @@ This page is generated from the [current English catalog](../src/i18n/locales/en
 | `settings.dialogs.exportTitle` | Export Bloom Settings |
 | `settings.dialogs.importTitle` | Import Bloom Settings |
 
+## Settings → Monitors
+
+| Reference key | English text |
+| --- | --- |
+| `settings.monitors.label` | Monitor |
+| `settings.monitors.dockDesc` | Which display the dock appears on |
+| `settings.monitors.notchDesc` | Which display the notch appears on |
+| `settings.monitors.primary` | Main display |
+| `settings.monitors.all` | All displays |
+| `settings.monitors.primaryDisplay` | {{name}} · main |
+| `settings.monitors.disconnected` | Disconnected display |
+
 ## Dock → Menu
 
 | Reference key | English text |

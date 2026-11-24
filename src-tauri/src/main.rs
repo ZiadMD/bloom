@@ -9,6 +9,8 @@ mod diagnostics;
 mod dock_extras;
 mod i18n;
 mod jack;
+mod monitor_logic;
+mod monitors;
 mod onboarding;
 mod services;
 mod settings_window;
@@ -154,6 +156,8 @@ fn main() {
             update_dock_rect,
             update_notch_rect,
             window_region::set_window_region,
+            monitors::list_monitors,
+            monitors::apply_monitor_settings,
             set_dock_hovered,
             set_dock_popup_active,
             set_notch_hovered,
@@ -319,6 +323,8 @@ fn main() {
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         reconcile_main_appbar(&h);
+                        // A notch moved to another monitor keeps spanning it.
+                        crate::commands::position_notch_window(&h);
                         sync_overlays(&h);
                     });
                 }
@@ -347,6 +353,11 @@ fn main() {
                             sync_overlays(&h);
                         });
                     } else {
+                        let h2 = h.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            services::reposition_moved_dock(&h2);
+                        });
                         sync_overlays(&h);
                     }
                 }

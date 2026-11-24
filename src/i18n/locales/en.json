@@ -182,6 +182,15 @@
 			"resetConfirm": "Reset and Restart",
 			"exportTitle": "Export Bloom Settings",
 			"importTitle": "Import Bloom Settings"
+		},
+		"monitors": {
+			"label": "Monitor",
+			"dockDesc": "Which display the dock appears on",
+			"notchDesc": "Which display the notch appears on",
+			"primary": "Main display",
+			"all": "All displays",
+			"primaryDisplay": "{{name}} · main",
+			"disconnected": "Disconnected display"
 		}
 	},
 	"dock": {

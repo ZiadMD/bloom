@@ -755,6 +755,11 @@ function App() {
 	useEffect(() => {
 		setWindowLabel(getCurrentWebviewWindow().label);
 	}, []);
+	// "main" is the notch on the primary (or chosen) monitor; "main-<id>" are
+	// extra notches on other monitors when the notch is set to show on all of
+	// them. Every notch reports its own geometry and hover; app-wide work
+	// (startup, window settings, alerts) stays with "main".
+	const isNotchWindow = windowLabel === "main" || windowLabel.startsWith("main-");
 
 	// Update state
 	const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -934,23 +939,23 @@ function App() {
 	}, [isAnyInteraction]);
 
 	useEffect(() => {
-		if (windowLabel === "main") {
+		if (isNotchWindow) {
 			invoke("set_notch_hovered", { hovered: isNotchHovered }).catch(() => {});
 		}
-	}, [isNotchHovered, windowLabel]);
+	}, [isNotchHovered, isNotchWindow]);
 
 	// Tell the backend whether the notch is actually on screen so a hidden
 	// notch (smart/peek mode) stays click-through instead of swallowing clicks
 	// in its footprint.
 	useEffect(() => {
-		if (windowLabel === "main") {
+		if (isNotchWindow) {
 			invoke("set_notch_visible", { visible: isVisible && !isHidden }).catch(() => {});
 		}
-	}, [isVisible, isHidden, windowLabel]);
+	}, [isVisible, isHidden, isNotchWindow]);
 
 	useEffect(() => {
 		const updateRect = () => {
-			if (bloomRef.current && windowLabel === "main") {
+			if (bloomRef.current && isNotchWindow) {
 				// Activity bubbles sit beside the pill and must stay clickable too.
 				const rects = [bloomRef.current, musicBubbleRef.current, shelfBubbleRef.current, agentBubbleRef.current]
 					.filter((el): el is NonNullable<typeof el> => el !== null)
@@ -982,7 +987,7 @@ function App() {
 			window.removeEventListener("resize", updateRect);
 			observer.disconnect();
 		};
-	}, [isExpanded, isHidden, windowLabel, scale]);
+	}, [isExpanded, isHidden, isNotchWindow, scale]);
 
 	useEffect(() => {
 		if (!windowLabel) return;
@@ -1100,7 +1105,7 @@ function App() {
 		() => localStorage.getItem("bloom-notch-devices-enabled") === "true"
 	);
 	const connectedDevices = useConnectedDevices(
-		windowLabel === "main" && settingsDevicesPanelEnabled
+		isNotchWindow && settingsDevicesPanelEnabled
 	);
 	const [settingsTimerSoundEnabled, setSettingsTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
@@ -3248,7 +3253,7 @@ function App() {
 	// these rectangles the window takes no clicks, whatever its click-through
 	// state. Sent after every render, but only when the region changes.
 	useEffect(() => {
-		if (windowLabel === "main") updateNotchRegion();
+		if (isNotchWindow) updateNotchRegion();
 	});
 
 	return (

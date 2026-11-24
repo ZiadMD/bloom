@@ -55,7 +55,13 @@ pub static ANY_MEDIA_PLAYING: AtomicBool = AtomicBool::new(false);
 pub static START_OPEN_AT_PRESS: AtomicBool = AtomicBool::new(false);
 pub static OVERLAY_IN_SPLASH: AtomicBool = AtomicBool::new(false);
 pub static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// A fullscreen app covers the primary monitor (the overlay's monitor).
 pub static CURRENT_FOREGROUND_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+/// A fullscreen app covers the notch's monitor (see monitors.rs; the same
+/// monitor as above unless the notch is moved to another one).
+pub static CURRENT_NOTCH_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+/// A fullscreen app covers the dock's monitor.
+pub static CURRENT_DOCK_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 pub static CURRENT_FOREGROUND_MAXIMIZED: AtomicBool = AtomicBool::new(false);
 
 pub static SINGLE_INSTANCE_MUTEX_HANDLE: OnceLock<isize> = OnceLock::new();

@@ -16,7 +16,11 @@ use crate::utils::*;
 use std::collections::HashMap;
 
 #[tauri::command]
-pub async fn set_menu_open(open: bool, rect: Option<IntRect>) {
+pub async fn set_menu_open(window: Window, open: bool, rect: Option<IntRect>) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_menu(window.label(), open, rect);
+        return;
+    }
     MENU_IS_OPEN.store(open, Ordering::Relaxed);
     if let Ok(mut r) = MENU_RECT.lock() {
         *r = rect;
@@ -24,12 +28,26 @@ pub async fn set_menu_open(open: bool, rect: Option<IntRect>) {
 }
 
 #[tauri::command]
-pub async fn set_dock_hovered(hovered: bool) {
+pub async fn set_dock_hovered(window: Window, hovered: bool) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_hovered(window.app_handle(), window.label(), hovered);
+        return;
+    }
     DOCK_IS_HOVERED.store(hovered, Ordering::Relaxed);
 }
 
 #[tauri::command]
 pub fn set_dock_popup_active(app: AppHandle, window: Window, active: bool) {
+    if crate::monitors::is_extra(window.label()) {
+        // An extra dock on another monitor keeps its popup above other windows;
+        // the Start-menu handoff below belongs to the original dock.
+        if active && crate::services::dock_popup_allowed() {
+            if let Ok(hwnd) = window.hwnd() {
+                re_assert_topmost(hwnd);
+            }
+        }
+        return;
+    }
     if window.label() != "dock" {
         return;
     }
@@ -55,7 +73,11 @@ pub fn set_dock_popup_active(app: AppHandle, window: Window, active: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
+pub async fn set_notch_hovered(app: AppHandle, window: Window, hovered: bool) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_hovered(&app, window.label(), hovered);
+        return;
+    }
     NOTCH_IS_HOVERED.store(hovered, Ordering::Relaxed);
     // Re-evaluate right away. During a native drag the webview never sees the
     // pointer leave, so waiting for the next mouse move can leave the notch
@@ -64,7 +86,11 @@ pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_visible(visible: bool) {
+pub async fn set_notch_visible(window: Window, visible: bool) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_visible(window.label(), visible);
+        return;
+    }
     NOTCH_IS_VISIBLE.store(visible, Ordering::Relaxed);
 }
 
@@ -148,7 +174,11 @@ pub fn shelf_drag_icon() -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn update_dock_rect(rect: IntRect, overlap_rect: Option<IntRect>) {
+pub async fn update_dock_rect(window: Window, rect: IntRect, overlap_rect: Option<IntRect>) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_rect(window.label(), rect, overlap_rect);
+        return;
+    }
     if let Ok(mut r) = DOCK_RECT.lock() {
         *r = Some(rect);
     }
@@ -160,7 +190,11 @@ pub async fn update_dock_rect(rect: IntRect, overlap_rect: Option<IntRect>) {
 }
 
 #[tauri::command]
-pub async fn update_notch_rect(rect: IntRect) {
+pub async fn update_notch_rect(window: Window, rect: IntRect) {
+    if crate::monitors::is_extra(window.label()) {
+        crate::monitors::report_rect(window.label(), rect, None);
+        return;
+    }
     if let Ok(mut r) = NOTCH_RECT.lock() {
         *r = Some(rect);
     }
@@ -214,7 +248,7 @@ pub async fn init_dock(app: AppHandle, mode: String) {
             register_dock_appbar(dock_win.clone());
         } else {
             // Auto-hide mode: position at bottom of screen.
-            // Retry until primary_monitor() is available (can fail on autostart before shell).
+            // Retry until the monitor is available (can fail on autostart before shell).
             let dock_clone = dock_win.clone();
             tauri::async_runtime::spawn(async move {
                 for attempt in 0..20 {
@@ -229,7 +263,11 @@ pub async fn init_dock(app: AppHandle, mode: String) {
                         .outer_size()
                         .map(|s| s.height as i32)
                         .unwrap_or(0);
-                    let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                    let monitor_info = crate::monitors::target_monitor(
+                        dock_clone.app_handle(),
+                        crate::monitor_logic::Surface::Dock,
+                    )
+                    .map(|m| {
                         let s = m.size();
                         let p = m.position();
                         (
@@ -304,10 +342,11 @@ pub async fn init_dock(app: AppHandle, mode: String) {
         // auto-hide mode completes it after SetWindowPos and show both succeed.
         // Reset overlap state so the overlap thread re-syncs cleanly.
         CURRENT_DOCK_OVERLAP.store(0, Ordering::Relaxed);
-        let _ = app.emit("dock-overlap", false);
+        let _ = app.emit_to("dock", "dock-overlap", false);
         // Sync the adaptive-dock signal so the dock expands immediately if a
         // maximized window is already in the foreground when it's enabled.
-        let _ = app.emit(
+        let _ = app.emit_to(
+            "dock",
             "dock-maximized",
             CURRENT_FOREGROUND_MAXIMIZED.load(Ordering::Relaxed),
         );
@@ -330,6 +369,7 @@ fn disable_dock(app: &AppHandle) {
     }
     DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
     crate::services::reconcile_main_appbar(app);
+    crate::monitors::sync(app);
 }
 
 #[tauri::command]
@@ -360,6 +400,8 @@ pub async fn sync_appbar(app: AppHandle) {
         }
     }
     sync_overlays(&app);
+    // Create, move or remove the notch and dock windows on other monitors.
+    crate::monitors::sync(&app);
 }
 
 #[tauri::command]
@@ -381,7 +423,7 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
                 });
                 DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
 
-                // Retry primary_monitor() — can fail on autostart before shell initializes
+                // Retry the monitor lookup — can fail on autostart before shell initializes
                 let dock_clone = dock_win.clone();
                 tauri::async_runtime::spawn(async move {
                     for attempt in 0..10 {
@@ -392,7 +434,11 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
                             .outer_size()
                             .map(|s| s.height as i32)
                             .unwrap_or(0);
-                        let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+                        let monitor_info = crate::monitors::target_monitor(
+                            dock_clone.app_handle(),
+                            crate::monitor_logic::Surface::Dock,
+                        )
+                        .map(|m| {
                             let s = m.size();
                             let p = m.position();
                             (
@@ -469,9 +515,10 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
         // Sync the current overlap state immediately to the frontend
         let current = CURRENT_DOCK_OVERLAP.load(Ordering::Relaxed);
         if current != -1 {
-            let _ = app.emit("dock-overlap", current == 1);
+            let _ = app.emit_to("dock", "dock-overlap", current == 1);
         }
-        let _ = app.emit(
+        let _ = app.emit_to(
+            "dock",
             "dock-maximized",
             CURRENT_FOREGROUND_MAXIMIZED.load(Ordering::Relaxed),
         );
@@ -485,6 +532,8 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
             }
         });
     }
+    // Extra docks on other monitors use the same mode.
+    crate::monitors::relayout(&app, Some(crate::monitor_logic::Surface::Dock));
 }
 
 #[tauri::command]
@@ -508,20 +557,46 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
                 }
             });
         }
-        // Reposition window to span the full primary monitor so CSS justify-content:center works
-        if let Ok(Some(monitor)) = main_win.primary_monitor() {
-            let m_pos = monitor.position();
-            let m_size = monitor.size();
-            let scale = monitor.scale_factor();
-            let bloom_scale = crate::utils::get_bloom_scale(&app);
-            let target_height = (420.0 * bloom_scale * scale) as u32;
-            let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-            let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
-        }
+        // Reposition window to span its full monitor so CSS justify-content:center works
+        place_notch_window(&app, &main_win);
 
         let current = CURRENT_NOTCH_OVERLAP.load(Ordering::Relaxed);
         if current != -1 {
-            let _ = app.emit("notch-overlap", current == 1);
+            let _ = app.emit_to("main", "notch-overlap", current == 1);
+        }
+    }
+    // Extra notches on other monitors use the same mode.
+    crate::monitors::relayout(&app, Some(crate::monitor_logic::Surface::Notch));
+}
+
+/// Spans the notch window across the top of its monitor (the primary one
+/// unless the user moved it, see monitors.rs).
+fn place_notch_window(app: &AppHandle, main_win: &tauri::WebviewWindow) {
+    if let Some(monitor) =
+        crate::monitors::target_monitor(app, crate::monitor_logic::Surface::Notch)
+    {
+        let m_pos = monitor.position();
+        let m_size = monitor.size();
+        let scale = monitor.scale_factor();
+        let bloom_scale = crate::utils::get_bloom_scale(app);
+        let target_height = (420.0 * bloom_scale * scale) as u32;
+        let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+        let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+    }
+}
+
+/// After a display change, keeps a notch the user moved to another monitor on
+/// that monitor. Fixed mode is handled by its AppBar; smart and peek are not
+/// re-placed otherwise. A notch on the primary monitor is left as it was.
+pub fn position_notch_window(app: &AppHandle) {
+    if crate::monitors::mode(app, crate::monitor_logic::Surface::Notch)
+        == crate::monitor_logic::MonitorMode::Primary
+    {
+        return;
+    }
+    if let Some(main_win) = app.get_webview_window("main") {
+        if !MAIN_APPBAR_REGISTERED.load(Ordering::Relaxed) {
+            place_notch_window(app, &main_win);
         }
     }
 }
@@ -3239,6 +3314,7 @@ pub fn release_appbars(handle: &AppHandle) {
     }
     MAIN_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
     DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
+    crate::monitors::release_all();
 }
 
 /// Restore the native taskbar, unregister Bloom's appbars, and exit gracefully.
@@ -3309,6 +3385,7 @@ fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::V
             crate::services::register_dock_appbar(dock_win);
         }
     }
+    crate::monitors::relayout(app, None);
 }
 
 #[tauri::command(async)]

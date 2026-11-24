@@ -602,6 +602,7 @@ export function FeaturePreview({ tab, settings, focus }: FeaturePreviewProps) {
 			},
 			notch: {
 				"notch-behavior": "resting",
+				"notch-monitor": "resting",
 				"peek-delay": "resting",
 				"remember-last-panel": "resting",
 				"default-panel": "resting",
@@ -622,6 +623,7 @@ export function FeaturePreview({ tab, settings, focus }: FeaturePreviewProps) {
 			dock: {
 				"bloom-dock": "dock",
 				behavior: "dock",
+				"dock-monitor": "dock",
 				"peek-delay": "dock",
 				"show-app-previews": "dock",
 				"show-background-apps": "dock",

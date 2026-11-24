@@ -1080,7 +1080,6 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                             }
                         }
                         (SystemCommand::ToggleVisibility(visible), _) => {
-                            let _ = handle_system.emit("visibility-change", visible);
                             if let Some(w) = handle_system.get_webview_window("bottom-corners") {
                                 if visible {
                                     let _ = w.show();
@@ -1360,6 +1359,8 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
             IsZoomed, GWL_STYLE, WS_CAPTION, WS_MAXIMIZE,
         };
         let mut last_visible = true;
+        let mut last_notch_fs = false;
+        let mut last_dock_fs = false;
         let mut last_dock_overlap: Option<bool> = None;
         let mut last_notch_overlap: Option<bool> = None;
         let mut last_dock_maximized: Option<bool> = None;
@@ -1387,6 +1388,18 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                         last_monitor_update = now;
                     }
                 }
+                // The monitors the notch and dock are on: the primary one
+                // unless the user moved them (see monitors.rs).
+                let dock_target = crate::monitors::target_bounds(
+                    &handle_visibility,
+                    crate::monitor_logic::Surface::Dock,
+                );
+                let notch_target = crate::monitors::target_bounds(
+                    &handle_visibility,
+                    crate::monitor_logic::Surface::Notch,
+                );
+                let dock_scale = dock_target.map(|t| t.1).unwrap_or(cached_scale);
+                let notch_scale = notch_target.map(|t| t.1).unwrap_or(cached_scale);
                 use windows::Win32::Graphics::Gdi::{
                     GetMonitorInfoA, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
                 };
@@ -1483,16 +1496,33 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 }
                 // Overlap uses the expanded content width. Hit-testing still
                 // uses DOCK_RECT, which includes the live pill and previews.
-                let overlap_span = DOCK_OVERLAP_RECT
+                // Reported in window coordinates, so offset by the window's
+                // position on screen (zero for a window on the primary monitor).
+                let dock_origin_x = DOCK_WINDOW_RECT
                     .lock()
                     .ok()
-                    .and_then(|r| *r)
-                    .map(|r| dock_span_px(r, cached_scale));
+                    .and_then(|g| *g)
+                    .map(|(p, _)| p.x)
+                    .unwrap_or(0);
+                let main_origin_x = MAIN_WINDOW_RECT
+                    .lock()
+                    .ok()
+                    .and_then(|g| *g)
+                    .map(|(p, _)| p.x)
+                    .unwrap_or(0);
+                let overlap_span = DOCK_OVERLAP_RECT.lock().ok().and_then(|r| *r).map(|r| {
+                    let (left, right) = dock_span_px(r, dock_scale);
+                    (left + dock_origin_x, right + dock_origin_x)
+                });
 
                 let mut should_overlap = false;
                 let mut should_notch_overlap = false;
                 let mut should_maximized = false;
+                // Fullscreen on the primary monitor (overlay HUDs), and on the
+                // notch's and the dock's monitors.
                 let mut current_is_fs = false;
+                let mut notch_fs = false;
+                let mut dock_fs = false;
 
                 // Cheap check every tick: the foreground hwnd doesn't change when
                 // the user clicks maximize, so without this the adaptive dock
@@ -1567,6 +1597,22 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                 if GetMonitorInfoA(h_monitor, &mut mi).as_bool() {
                                     let screen_rect = mi.rcMonitor;
                                     let is_primary = is_primary_monitor(mi.dwFlags);
+                                    // Each surface reacts only to windows on
+                                    // its own monitor, by default the primary.
+                                    let on_target =
+                                        |target: Option<(crate::monitor_logic::Bounds, f64)>| {
+                                            match target {
+                                                Some((b, _)) => {
+                                                    b.left == screen_rect.left
+                                                        && b.top == screen_rect.top
+                                                        && b.right == screen_rect.right
+                                                        && b.bottom == screen_rect.bottom
+                                                }
+                                                None => is_primary,
+                                            }
+                                        };
+                                    let on_dock = on_target(dock_target);
+                                    let on_notch = on_target(notch_target);
                                     let is_maximized =
                                         IsZoomed(hwnd).as_bool() || (style & WS_MAXIMIZE.0) != 0;
                                     let is_maximized_standard =
@@ -1598,32 +1644,37 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                         && rect.bottom >= screen_rect.bottom;
 
                                     // Truly fullscreen means client covers screen, OR window matches screen but is not just a standard maximized window
-                                    current_is_fs = is_primary
-                                        && (is_client_fullscreen || is_matches_screen)
+                                    let is_fullscreen = (is_client_fullscreen || is_matches_screen)
                                         && !is_maximized_standard;
+                                    current_is_fs = is_primary && is_fullscreen;
+                                    dock_fs = on_dock && is_fullscreen;
+                                    notch_fs = on_notch && is_fullscreen;
 
-                                    if is_primary && (current_is_fs || is_maximized) {
-                                        should_overlap = true;
-                                        should_notch_overlap = true;
-                                        // Standard maximized windows leave the dock's
-                                        // reserved strip empty on both sides, so the dock
-                                        // can stretch to a full taskbar. True fullscreen
-                                        // windows cover the screen and should not.
-                                        should_maximized = is_maximized && !current_is_fs;
-                                    } else if is_primary {
-                                        should_overlap = false;
-                                        if let Some(span) = overlap_span {
+                                    if on_dock {
+                                        if is_fullscreen || is_maximized {
+                                            should_overlap = true;
+                                            // Standard maximized windows leave the dock's
+                                            // reserved strip empty on both sides, so the dock
+                                            // can stretch to a full taskbar. True fullscreen
+                                            // windows cover the screen and should not.
+                                            should_maximized = is_maximized && !is_fullscreen;
+                                        } else if let Some(span) = overlap_span {
                                             should_overlap = window_reaches_dock(
                                                 span,
                                                 (rect.left, rect.right, rect.bottom),
-                                                screen_rect.bottom - (56.0 * cached_scale) as i32,
+                                                screen_rect.bottom - (56.0 * dock_scale) as i32,
                                             );
                                         }
+                                    }
 
+                                    if on_notch && (is_fullscreen || is_maximized) {
+                                        should_notch_overlap = true;
+                                    } else if on_notch {
                                         if let Ok(notch_rect_lock) = NOTCH_RECT.lock() {
                                             if let Some(nr) = *notch_rect_lock {
-                                                let scale = cached_scale;
-                                                let n_left = (nr.x as f64 * scale) as i32;
+                                                let scale = notch_scale;
+                                                let n_left =
+                                                    main_origin_x + (nr.x as f64 * scale) as i32;
                                                 let n_right =
                                                     n_left + (nr.width as f64 * scale) as i32;
                                                 let res_h = (36.0 * scale) as i32;
@@ -1669,11 +1720,14 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 CURRENT_NOTCH_OVERLAP
                     .store(if should_notch_overlap { 1 } else { 0 }, Ordering::Relaxed);
                 CURRENT_FOREGROUND_FULLSCREEN.store(current_is_fs, Ordering::Relaxed);
+                CURRENT_NOTCH_FULLSCREEN.store(notch_fs, Ordering::Relaxed);
+                CURRENT_DOCK_FULLSCREEN.store(dock_fs, Ordering::Relaxed);
 
                 if Some(effective_dock_overlap) != last_dock_overlap
                     || last_emit.elapsed() >= Duration::from_secs(3)
                 {
-                    let _ = handle_visibility.emit("dock-overlap", effective_dock_overlap);
+                    let _ =
+                        handle_visibility.emit_to("dock", "dock-overlap", effective_dock_overlap);
                     last_dock_overlap = Some(effective_dock_overlap);
                     last_emit = Instant::now();
                 }
@@ -1681,7 +1735,8 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 if Some(should_notch_overlap) != last_notch_overlap
                     || last_emit.elapsed() >= Duration::from_secs(3)
                 {
-                    let _ = handle_visibility.emit("notch-overlap", should_notch_overlap);
+                    let _ =
+                        handle_visibility.emit_to("main", "notch-overlap", should_notch_overlap);
                     last_notch_overlap = Some(should_notch_overlap);
                 }
 
@@ -1692,8 +1747,19 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 if Some(should_maximized) != last_dock_maximized
                     || last_emit.elapsed() >= Duration::from_secs(3)
                 {
-                    let _ = handle_visibility.emit("dock-maximized", should_maximized);
+                    let _ = handle_visibility.emit_to("dock", "dock-maximized", should_maximized);
                     last_dock_maximized = Some(should_maximized);
+                }
+
+                // Fullscreen visibility: the notch and the dock each step
+                // aside only for a fullscreen app on their own monitor.
+                if notch_fs != last_notch_fs {
+                    let _ = handle_visibility.emit_to("main", "visibility-change", !notch_fs);
+                    last_notch_fs = notch_fs;
+                }
+                if dock_fs != last_dock_fs {
+                    let _ = handle_visibility.emit_to("dock", "visibility-change", !dock_fs);
+                    last_dock_fs = dock_fs;
                 }
 
                 // Update full-screen visibility (hides TopBar/Corners)
@@ -2095,7 +2161,7 @@ pub fn dock_popup_allowed() -> bool {
 /// Recognizes the native Start/Search surface by its host process. Its window
 /// title is localized, so title-only checks make Smart dock overlap detection
 /// hide the dock on non-English Windows.
-fn is_start_menu_process(process_id: u32) -> bool {
+pub(crate) fn is_start_menu_process(process_id: u32) -> bool {
     if process_id == 0 {
         return false;
     }
@@ -2129,6 +2195,26 @@ fn is_start_menu_process_path(path: &str) -> bool {
 fn is_primary_monitor(flags: u32) -> bool {
     const PRIMARY_MONITOR_FLAG: u32 = 1;
     flags & PRIMARY_MONITOR_FLAG != 0
+}
+
+/// Physical bounds `(x, y, width, height)` of the monitor a surface is on: the
+/// primary monitor unless the user moved the surface (see monitors.rs).
+fn surface_monitor_rect(surface: crate::monitor_logic::Surface) -> (i32, i32, i32, i32) {
+    if let Some((b, _)) = crate::monitors::cached_target(surface) {
+        return (b.left, b.top, b.width(), b.height());
+    }
+    let (x, y) = MH_CACHED_MON_POS
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .unwrap_or((0, 0));
+    let (w, h) = MH_CACHED_MON_SIZE
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .map(|s| (s.0 as i32, s.1 as i32))
+        .unwrap_or((1920, 1080));
+    (x, y, w, h)
 }
 
 /// Hover-intent ("pressure") gate for the top edge. Contact with the top band
@@ -2229,8 +2315,8 @@ pub fn refresh_main_interaction(app_handle: &AppHandle) {
     if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
         return;
     }
-    let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-    update_main_interaction(app_handle, pt, now_ms(), fg_fs);
+    let notch_fs = CURRENT_NOTCH_FULLSCREEN.load(Ordering::Relaxed);
+    update_main_interaction(app_handle, pt, now_ms(), notch_fs);
 }
 
 /// True while a screen-capture UI (Windows Snipping Tool) has a visible window.
@@ -2480,27 +2566,17 @@ fn run_mouse_hook_thread() {
 
 /// Top-edge hover-intent delay in milliseconds. `0` disables the gate so the
 /// notch reveals the moment the band is touched (the pre-fix behavior).
-fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
+pub(crate) fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
     crate::utils::get_setting_str(app_handle, "bloom-notch-edge-delay")
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(TOP_EDGE_DWELL_MS)
         .clamp(0, 2000)
 }
 
-/// True when the cursor sits inside the top-edge hot band on the primary
+/// True when the cursor sits inside the top-edge hot band on the notch's
 /// monitor. Shared by the dwell gate and top-edge hit-testing continuity.
 fn in_top_edge_band(cursor: windows::Win32::Foundation::POINT, scale: f64) -> bool {
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let mon_w = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| s.0 as i32)
-        .unwrap_or(1920);
+    let (mon_x, mon_y, mon_w, _) = surface_monitor_rect(crate::monitor_logic::Surface::Notch);
 
     cursor.y <= (mon_y + (TOP_EDGE_BAND_PX * scale) as i32)
         && cursor.x >= mon_x
@@ -2569,12 +2645,12 @@ fn update_main_interaction(
             MH_LAST_MAIN_IGNORE.store(1, Ordering::Relaxed);
         }
         if MH_LAST_TOP_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-            let _ = app_handle.emit("notch-edge-hover", false);
+            let _ = app_handle.emit_to("main", "notch-edge-hover", false);
         }
         // Bloom is fully click-through here, so the webview cannot clear its
         // own hover state; do it for it.
         if NOTCH_IS_HOVERED.swap(false, Ordering::Relaxed) {
-            let _ = app_handle.emit("notch-pointer-left", ());
+            let _ = app_handle.emit_to("main", "notch-pointer-left", ());
         }
         return;
     }
@@ -2677,7 +2753,7 @@ fn update_main_interaction(
     let prev = MH_LAST_TOP_EDGE_HOVER.load(Ordering::Relaxed);
     let new_val = if final_notch_hover { 1 } else { 0 };
     if prev != new_val {
-        let _ = app_handle.emit("notch-edge-hover", final_notch_hover);
+        let _ = app_handle.emit_to("main", "notch-edge-hover", final_notch_hover);
         MH_LAST_TOP_EDGE_HOVER.store(new_val, Ordering::Relaxed);
     }
 
@@ -2700,7 +2776,7 @@ fn update_main_interaction(
         // missed it if the pointer left in the same frame). Tell it explicitly
         // or the notch stays expanded in peek/smart mode.
         if new_ignore == 1 && NOTCH_IS_HOVERED.swap(false, Ordering::Relaxed) {
-            let _ = app_handle.emit("notch-pointer-left", ());
+            let _ = app_handle.emit_to("main", "notch-pointer-left", ());
         }
     }
     // Applied on every update, not only on a change: it writes only when the
@@ -2725,14 +2801,17 @@ fn setup_top_edge_watchdog(app_handle: AppHandle) {
         if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
             continue;
         }
-        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-        update_main_interaction(&app_handle, pt, now_ms(), fg_fs);
+        let now = now_ms();
+        let notch_fs = CURRENT_NOTCH_FULLSCREEN.load(Ordering::Relaxed);
+        update_main_interaction(&app_handle, pt, now, notch_fs);
+        // Extra notches and docks on other monitors (see monitors.rs).
+        crate::monitors::update_interactions(&app_handle, pt, now, false);
     });
 }
 
 /// Bottom-edge hover-intent delay in milliseconds. `0` disables the gate so the
 /// dock reveals the moment the band is touched (the pre-fix behavior).
-fn dock_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
+pub(crate) fn dock_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
     crate::utils::get_setting_str(app_handle, "bloom-dock-edge-delay")
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(BOTTOM_EDGE_DWELL_MS)
@@ -2753,17 +2832,7 @@ fn dock_edge_armed_for(
     now: i64,
     scale: f64,
 ) -> bool {
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let (mon_w, mon_h) = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| (s.0 as i32, s.1 as i32))
-        .unwrap_or((1920, 1080));
+    let (mon_x, mon_y, mon_w, mon_h) = surface_monitor_rect(crate::monitor_logic::Surface::Dock);
 
     let in_band = cursor.y >= (mon_y + mon_h - (BOTTOM_EDGE_BAND_PX * scale) as i32)
         && cursor.x >= mon_x
@@ -2816,7 +2885,7 @@ fn update_dock_interaction(
         }
         MH_LAST_DOCK_IGNORE.store(1, Ordering::Relaxed);
         if MH_LAST_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-            let _ = app_handle.emit("dock-edge-hover", false);
+            let _ = app_handle.emit_to("dock", "dock-edge-hover", false);
         }
         return;
     }
@@ -2828,17 +2897,7 @@ fn update_dock_interaction(
         return;
     }
 
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let (mon_w, mon_h) = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| (s.0 as i32, s.1 as i32))
-        .unwrap_or((1920, 1080));
+    let (mon_x, mon_y, mon_w, mon_h) = surface_monitor_rect(crate::monitor_logic::Surface::Dock);
 
     let mut is_click_interactive = false;
     let mut is_hovered = false;
@@ -2936,7 +2995,7 @@ fn update_dock_interaction(
     let prev = MH_LAST_EDGE_HOVER.load(Ordering::Relaxed);
     let new_val = if final_dock_hover { 1 } else { 0 };
     if prev != new_val {
-        let _ = app_handle.emit("dock-edge-hover", final_dock_hover);
+        let _ = app_handle.emit_to("dock", "dock-edge-hover", final_dock_hover);
         MH_LAST_EDGE_HOVER.store(new_val, Ordering::Relaxed);
     }
 
@@ -2971,8 +3030,8 @@ fn setup_dock_edge_watchdog(app_handle: AppHandle) {
         if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
             continue;
         }
-        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-        update_dock_interaction(&app_handle, pt, now_ms(), fg_fs);
+        let dock_fs = CURRENT_DOCK_FULLSCREEN.load(Ordering::Relaxed);
+        update_dock_interaction(&app_handle, pt, now_ms(), dock_fs);
     });
 }
 
@@ -3012,7 +3071,21 @@ unsafe extern "system" fn mouse_hook_proc(
             if let Some(app) = WINDOW_CHANGE_APP_HANDLE.get().cloned() {
                 // Off the hook thread: a low-level hook must return quickly.
                 std::thread::spawn(move || {
-                    let _ = app.emit("dock-dismiss-menu", ());
+                    let _ = app.emit_to("dock", "dock-dismiss-menu", ());
+                });
+            }
+        }
+    }
+    // The same for menus open in extra docks on other monitors.
+    if code >= 0 && (wparam.0 == WM_LBUTTONDOWN as usize || wparam.0 == WM_RBUTTONDOWN as usize) {
+        let point = (*(lparam.0 as *const MSLLHOOKSTRUCT)).pt;
+        let dismissed = crate::monitors::menus_dismissed_by_press(point);
+        if !dismissed.is_empty() {
+            if let Some(app) = WINDOW_CHANGE_APP_HANDLE.get().cloned() {
+                std::thread::spawn(move || {
+                    for label in dismissed {
+                        let _ = app.emit_to(label.as_str(), "dock-dismiss-menu", ());
+                    }
                 });
             }
         }
@@ -3083,11 +3156,12 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
                 MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
             }
             if MH_LAST_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-                let _ = app_handle.emit("dock-edge-hover", false);
+                let _ = app_handle.emit_to("dock", "dock-edge-hover", false);
             }
             if MH_LAST_TOP_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-                let _ = app_handle.emit("notch-edge-hover", false);
+                let _ = app_handle.emit_to("main", "notch-edge-hover", false);
             }
+            crate::monitors::update_interactions(app_handle, cursor, now, true);
             return;
         }
 
@@ -3110,12 +3184,19 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
         let mon_h = cached_size.1 as i32;
 
         let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
+        // Keep the notch's and dock's monitor bounds fresh (cached for 1s).
+        crate::monitors::target_bounds(app_handle, crate::monitor_logic::Surface::Notch);
 
         // --- Dock Interaction ---
-        update_dock_interaction(app_handle, cursor, now, fg_fs);
+        let dock_fs = CURRENT_DOCK_FULLSCREEN.load(Ordering::Relaxed);
+        update_dock_interaction(app_handle, cursor, now, dock_fs);
 
         // --- Main (TopBar) Interaction ---
-        update_main_interaction(app_handle, cursor, now, fg_fs);
+        let notch_fs = CURRENT_NOTCH_FULLSCREEN.load(Ordering::Relaxed);
+        update_main_interaction(app_handle, cursor, now, notch_fs);
+
+        // --- Extra notches and docks on other monitors ---
+        crate::monitors::update_interactions(app_handle, cursor, now, false);
 
         // Expanded per-app volume mixer (if open) — the reported rect covers
         // the notch plus panel, so it keeps the card alive and clickable.
@@ -3616,7 +3697,9 @@ pub fn sync_overlays(app: &AppHandle) {
 }
 
 pub fn register_appbar(window: tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) =
+        crate::monitors::target_monitor(window.app_handle(), crate::monitor_logic::Surface::Notch)
+    {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
@@ -3717,7 +3800,12 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if crate::monitors::target_monitor(
+                    w.app_handle(),
+                    crate::monitor_logic::Surface::Notch,
+                )
+                .is_some()
+                {
                     // Reconcile rather than register directly: the notch mode
                     // may have changed while waiting for the monitor.
                     reconcile_main_appbar(w.app_handle());
@@ -3808,7 +3896,9 @@ fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
     if !crate::utils::dock_enabled() {
         return;
     }
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) =
+        crate::monitors::target_monitor(window.app_handle(), crate::monitor_logic::Surface::Dock)
+    {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let Ok(hwnd) = window.hwnd() else {
@@ -3955,7 +4045,12 @@ fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if crate::monitors::target_monitor(
+                    w.app_handle(),
+                    crate::monitor_logic::Surface::Dock,
+                )
+                .is_some()
+                {
                     register_dock_appbar(w);
                     break;
                 }
@@ -4336,6 +4431,27 @@ fn reposition_all_windows(app_handle: &AppHandle) {
             re_assert_topmost(hwnd);
         }
     }
+    // A moved notch follows its monitor when displays change, and the extra
+    // windows match the monitors now connected (see monitors.rs).
+    crate::commands::position_notch_window(app_handle);
+    crate::monitors::sync(app_handle);
+}
+
+/// After a scale (DPI) change, re-places a smart/peek dock the user moved to
+/// another monitor, whose size Windows may have just rescaled. A fixed dock
+/// re-registers its AppBar instead, and a dock on the primary monitor is left
+/// as it always was.
+pub fn reposition_moved_dock(app_handle: &AppHandle) {
+    if crate::monitors::mode(app_handle, crate::monitor_logic::Surface::Dock)
+        == crate::monitor_logic::MonitorMode::Primary
+        || !crate::utils::dock_enabled()
+        || DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed)
+    {
+        return;
+    }
+    if let Some(dock_win) = app_handle.get_webview_window("dock") {
+        reposition_autohide_dock(app_handle, dock_win);
+    }
 }
 
 fn reposition_autohide_dock(app_handle: &AppHandle, dock_win: tauri::WebviewWindow) {
@@ -4358,7 +4474,11 @@ fn reposition_autohide_dock(app_handle: &AppHandle, dock_win: tauri::WebviewWind
             if ph <= 10 {
                 continue;
             }
-            let monitor_info = dock_clone.primary_monitor().ok().flatten().map(|m| {
+            let monitor_info = crate::monitors::target_monitor(
+                dock_clone.app_handle(),
+                crate::monitor_logic::Surface::Dock,
+            )
+            .map(|m| {
                 let s = m.size();
                 let p = m.position();
                 (s.width as i32, s.height as i32, p.x, p.y)
@@ -4473,6 +4593,7 @@ unsafe extern "system" fn display_monitor_proc(
         // can send the same broadcast, so re-register in either case.
         MAIN_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
         DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
+        crate::monitors::forget_appbars();
         if let Some(app_handle) = DISPLAY_MONITOR_HANDLE.get() {
             let ah = app_handle.clone();
             tauri::async_runtime::spawn(async move {
